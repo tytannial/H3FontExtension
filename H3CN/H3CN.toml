@@ -1,0 +1,98 @@
+# H3CN插件配置文件
+# 特别提醒，务必保证该文件为UTF8无BOM编码
+
+# 通用配置
+[General]
+TextColor = true # 兼容SoD_SP的彩色字体插件
+
+# 弹出框宽度限制，-1为自动宽度，游戏宽度的一半（不推荐使用自动宽度）
+[MessageBox]
+MaxWordWidth = 400 # 最大词宽度
+MaxLineWidth = 400 # 最大行宽度
+
+# 字体映射定义
+# Name: H3字体名称（切勿修改）
+# HzkFont: H3字体对应的点阵字体
+# Height: 点阵字体高
+# Width: 点阵字体宽
+
+[[Fonts]]
+Name = "tiny.fnt"
+HzkFont = "Fonts/Hzk_Tiny"
+Height = 12
+Width = 12
+MarginLeft = 1
+MarginRight = 1
+DrawShadow = false
+
+[[Fonts]]
+Name = "smalfont.fnt"
+HzkFont = "Fonts/Hzk_Small"
+Height = 12
+Width = 12
+MarginLeft = 1
+MarginRight = 1
+DrawShadow = true
+
+[[Fonts]]
+Name = "medfont.fnt"
+HzkFont = "Fonts/Hzk_Medium"
+Height = 16
+Width = 16
+MarginLeft = 1
+MarginRight = 1
+DrawShadow = true
+
+[[Fonts]]
+Name = "bigfont.fnt"
+HzkFont = "Fonts/Hzk_Big"
+Height = 24
+Width = 24
+MarginLeft = 2
+MarginRight = 2
+DrawShadow = true
+
+[[Fonts]]
+Name = "calli10r.fnt"
+HzkFont = "Fonts/Hzk_Calli10r"
+Height = 12
+Width = 12
+MarginLeft = 1
+MarginRight = 1
+DrawShadow = true
+
+[[Fonts]]
+Name = "credits.fnt"
+HzkFont = "Fonts/Hzk_Credits"
+Height = 24
+Width = 24
+MarginLeft = 2
+MarginRight = 2
+DrawShadow = true
+
+[[Fonts]]
+Name = "hiscore.fnt"
+HzkFont = "Fonts/Hzk_Hiscore"
+Height = 12
+Width = 12
+MarginLeft = 1
+MarginRight = 1
+DrawShadow = true
+
+[[Fonts]]
+Name = "times08r.fnt"
+HzkFont = "Fonts/Hzk_Times08r"
+Height = 12
+Width = 12
+MarginLeft = 1
+MarginRight = 1
+DrawShadow = true
+
+[[Fonts]]
+Name = "verd10b.fnt"
+HzkFont = "Fonts/Hzk_Verd10b"
+Height = 12
+Width = 12
+MarginLeft = 1
+MarginRight = 1
+DrawShadow = true
