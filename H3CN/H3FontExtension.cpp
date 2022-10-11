@@ -112,6 +112,7 @@ namespace H3FontExtension
 
         return true;
     }
+
     /**
      * @brief 32位色绘制文本
      * @param pFont ASCII字体
@@ -130,6 +131,7 @@ namespace H3FontExtension
     {
         return DrawTextChar_t(pFont, cFont, pOutputPcx, nCode1, nCode2, nX, nY, nFontColor, ShadowColor32);
     }
+
     /**
      * @brief 16位色绘制文本
      * @param pFont ASCII字体
@@ -343,12 +345,12 @@ namespace H3FontExtension
 
         //处理颜色代码
         nColorIdx = nColorIdx & 0x100 ? nColorIdx & 0xFE : nColorIdx + 9;
-        uint32_t defaultColor = 0u;
 
+        uint32_t defaultColor;
         DrawTextChar drawTextFunc;
         if (H3BitMode::Get() == 4)
         {
-            defaultColor = pFont->palette.palette32->colors[nColorIdx].GetColor();
+            defaultColor = pFont->palette.color[nColorIdx].GetRGB888();
             drawTextFunc = DrawTextChar32;
         }
         else
@@ -388,10 +390,16 @@ namespace H3FontExtension
                 {
                     if (currentChar == '}')
                     {
-                        string_view colorName = p.pText.substr(colorNameSubIndex, i - colorNameSubIndex);
-                        if (colorName[0] == '#' && colorName.length() <= 9)
+                        if (i - colorNameSubIndex == 0)
                         {
-                            auto rst = std::from_chars(colorName.data() + 1, colorName.data() + colorName.size(),
+                            textColor = defaultColor;
+                            continue;
+                        }
+
+                        string_view colorName = p.pText.substr(colorNameSubIndex, i - colorNameSubIndex);
+                        if (colorName.length() <= 9)
+                        {
+                            auto rst = std::from_chars(colorName.data(), colorName.data() + colorName.size(),
                                                        textColor, 16);
                             if (rst.ec != std::errc())
                             {
@@ -425,7 +433,7 @@ namespace H3FontExtension
                     //传统颜色代码
                     if (currentChar == '{')
                     {
-                        textColor = H3BitMode::Get() == 4 ? pFont->palette.palette32->colors[nColorIdx + 1].GetColor()
+                        textColor = H3BitMode::Get() == 4 ? pFont->palette.color[nColorIdx + 1].GetRGB888()
                                                           : pFont->palette.color[nColorIdx + 1].Value();
                     }
                     continue;

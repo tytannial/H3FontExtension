@@ -9,7 +9,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     }
     auto pEnd = wcsrchr(pName, '\\');
 
-    if (_wcsicmp(pEnd, L"\\h3hota HD.exe") != 0 && _wcsicmp(pEnd, L"\\Heroes3 HD.exe") != 0)
+    if (_wcsicmp(pEnd, L"\\h3era.exe") != 0
+        && _wcsicmp(pEnd, L"\\h3era HD.exe") != 0)
     {
         return FALSE;
     }
