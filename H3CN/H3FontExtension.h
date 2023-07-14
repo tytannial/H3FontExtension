@@ -30,10 +30,11 @@ namespace H3FontExtension
     public:
         std::string ASCIIFontName;
         PUINT8 FontFileBuffer = nullptr;
-        int Height = 0;
+        UINT8 Height = 0;
         int Width = 0;
         int MarginLeft = 0;
         int MarginRight = 0;
+        int MarginBottom = 0;
         bool DrawShadow = true;
 
         HzkStrc()
@@ -41,9 +42,10 @@ namespace H3FontExtension
         }
 
         HzkStrc(LPCSTR lpASCIIFontName, LPCSTR lpFileName, int nHeight, int nWidth, int nMarginLeft, int nMarginRight,
-                bool bDrawShadow)
+                int nMarginBottom, bool bDrawShadow)
         {
-            LoadHzhFont(lpASCIIFontName, lpFileName, nHeight, nWidth, nMarginLeft, nMarginRight, bDrawShadow);
+            LoadHzhFont(lpASCIIFontName, lpFileName, nHeight, nWidth, nMarginLeft, nMarginRight, nMarginBottom,
+                        bDrawShadow);
         }
 
         /// <summary>
@@ -54,7 +56,7 @@ namespace H3FontExtension
         /// <param name="nWidth"></param>
         /// <returns></returns>
         bool __fastcall LoadHzhFont(LPCSTR lpASCIIFontName, LPCSTR lpFileName, int nHeight, int nWidth, int nMarginLeft,
-                                    int nMarginRight, bool bDrawShadow)
+                                    int nMarginRight, int nMarginBottom, bool bDrawShadow)
         {
             std::ifstream file(lpFileName, std::ios::in | std::ios::binary);
             file.seekg(0, std::ios::end);
@@ -69,6 +71,7 @@ namespace H3FontExtension
             this->DrawShadow = bDrawShadow;
             this->MarginRight = nMarginRight;
             this->MarginLeft = nMarginLeft;
+            this->MarginBottom = nMarginBottom;
             this->Width = nWidth;
             this->Height = nHeight;
             this->ASCIIFontName = std::string(lpASCIIFontName);

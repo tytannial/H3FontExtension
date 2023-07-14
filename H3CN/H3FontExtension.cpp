@@ -54,7 +54,7 @@ namespace H3FontExtension
         {
             PUINT8 pFontBuffer = pFont->GetChar(nCode1);
             int startX = nX + pFont->width[nCode1].leftMargin;
-            int startY = nY;
+            int startY = nY + (cFont->Height - pFont->height) / 2;
             for (int nRow = 0; nRow < pFont->height; ++nRow)
             {
                 for (int nColumn = 0; nColumn < pFont->width[nCode1].span; ++nColumn)
@@ -235,7 +235,7 @@ namespace H3FontExtension
                     charWidth = GetFontCharWidth(pFont, cFont, currentChar);
                 }
 
-                if (currentLineWidth + charWidth > nWidth)
+                if (currentLineWidth + charWidth > nWidth + charWidth)
                 {
                     ++lineCount;
                     if (textLines)
@@ -440,12 +440,14 @@ namespace H3FontExtension
                 if (currentChar < 160)
                 {
                     drawTextFunc(pFont, cFont, pPcx, currentChar, 0, nX + startX + posMove,
-                                 nY + startY + rowIdx * pFont->height + pFont->bottomMargin, textColor);
+                                 nY + startY + rowIdx * (std::max(pFont->height, cFont->Height) + cFont->MarginBottom),
+                                 textColor);
                 }
                 else
                 {
                     drawTextFunc(pFont, cFont, pPcx, currentChar, p.pText[i + 1], nX + startX + posMove,
-                                 nY + startY + rowIdx * pFont->height + pFont->bottomMargin, textColor);
+                                 nY + startY + rowIdx * (std::max(pFont->height, cFont->Height) + cFont->MarginBottom),
+                                 textColor);
                     ++i;
                 }
 
@@ -619,7 +621,7 @@ namespace H3FontExtension
             HzkFont[i] = new HzkStrc(font->get("Name")->value_or(""), font->get("HzkFont")->value_or(""),
                                      font->get("Height")->value_or(0), font->get("Width")->value_or(0),
                                      font->get("MarginLeft")->value_or(0), font->get("MarginRight")->value_or(0),
-                                     font->get("DrawShadow")->value_or(true));
+                                     font->get("MarginBottom")->value_or(2), font->get("DrawShadow")->value_or(true));
         }
 
         Cmpt_TextColor = config["General"]["TextColor"].value_or(true);
