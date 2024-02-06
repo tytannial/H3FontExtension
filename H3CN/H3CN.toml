@@ -17,7 +17,7 @@ MaxLineWidth = 400 # 最大行宽度
 # Width: 点阵字体宽
 # MarginLeft: 左边距
 # MarginRight: 右边距
-# MarginBttom: 行距修正
+# MarginBottom: 行距修正
 
 [[Fonts]]
 Name = "tiny.fnt"
@@ -26,7 +26,7 @@ Height = 12
 Width = 12
 MarginLeft = 1
 MarginRight = 1
-MarginBttom = 1
+MarginBottom = 0
 DrawShadow = false
 
 [[Fonts]]
@@ -36,7 +36,7 @@ Height = 12
 Width = 12
 MarginLeft = 1
 MarginRight = 1
-MarginBttom = 1
+MarginBottom = 0
 DrawShadow = true
 
 [[Fonts]]
@@ -46,7 +46,7 @@ Height = 16
 Width = 16
 MarginLeft = 1
 MarginRight = 1
-MarginBttom = 1
+MarginBottom = 0
 DrawShadow = true
 
 [[Fonts]]
@@ -56,7 +56,7 @@ Height = 24
 Width = 24
 MarginLeft = 2
 MarginRight = 2
-MarginBttom = 1
+MarginBottom = 0
 DrawShadow = true
 
 [[Fonts]]
@@ -66,7 +66,7 @@ Height = 12
 Width = 12
 MarginLeft = 1
 MarginRight = 1
-MarginBttom = 1
+MarginBottom = 0
 DrawShadow = true
 
 [[Fonts]]
@@ -76,7 +76,7 @@ Height = 24
 Width = 24
 MarginLeft = 2
 MarginRight = 2
-MarginBttom = 1
+MarginBottom = 0
 DrawShadow = true
 
 [[Fonts]]
@@ -86,7 +86,7 @@ Height = 12
 Width = 12
 MarginLeft = 1
 MarginRight = 1
-MarginBttom = 1
+MarginBottom = 0
 DrawShadow = true
 
 [[Fonts]]
@@ -96,7 +96,7 @@ Height = 12
 Width = 12
 MarginLeft = 1
 MarginRight = 1
-MarginBttom = 1
+MarginBottom = 0
 DrawShadow = true
 
 [[Fonts]]
@@ -106,5 +106,5 @@ Height = 12
 Width = 12
 MarginLeft = 1
 MarginRight = 1
-MarginBttom = 1
+MarginBottom = 0
 DrawShadow = true
