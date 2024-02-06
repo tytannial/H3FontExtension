@@ -49,7 +49,7 @@ namespace H3FontExtension
     bool __fastcall DrawTextChar_t(H3Font* pFont, HzkStrc* cFont, H3LoadedPcx16* pOutputPcx, uint8_t nCode1,
                                    uint8_t nCode2, int nX, int nY, T nFontColor, T nShadowColor)
     {
-        //绘制英文文字
+        // 绘制英文文字
         if (nCode2 == 0)
         {
             PUINT8 pFontBuffer = pFont->GetChar(nCode1);
@@ -80,9 +80,9 @@ namespace H3FontExtension
             return false;
         }
 
-        //绘制汉字文字
+        // 绘制汉字文字
 
-        //左边距为1，对齐Y中轴
+        // 左边距为1，对齐Y中轴
         int startX = nX + cFont->MarginLeft;
         int startY = nY + (pFont->height - cFont->Height) / 2;
         PUINT8 pFontFileBuffer = cFont->GetHzkCharacterPcxPointer(nCode1, nCode2);
@@ -93,14 +93,14 @@ namespace H3FontExtension
                 uint8_t mask = *(pFontFileBuffer + nColumn / 8 + (cFont->Height + 7) / 8 * nRow);
                 if ((1 << (7 - nColumn % 8)) & mask)
                 {
-                    //绘制正常像素点
+                    // 绘制正常像素点
                     *((T*)pOutputPcx->GetRow(startY + nRow) + startX + nColumn) = nFontColor;
-                    //是否绘制阴影
+                    // 是否绘制阴影
                     if (!cFont->DrawShadow)
                     {
                         continue;
                     }
-                    //判断右下角像素颜色，绘制阴影
+                    // 判断右下角像素颜色，绘制阴影
                     auto c = pOutputPcx->GetPixel(startX + nColumn + 1, startY + nRow + 1).GetColor();
                     if (c != nFontColor)
                     {
@@ -256,7 +256,7 @@ namespace H3FontExtension
                     currentLineWidth += charWidth;
                 }
 
-                if (currentChar > 160)
+                if (currentChar > 160 && (i + 1) <= strLength)
                 {
                     ++i;
                 }
@@ -306,18 +306,18 @@ namespace H3FontExtension
             return;
         }
 
-        //汉字字体
+        // 汉字字体
         HzkStrc* cFont = GetMappedHzkFont(pFont);
 
         vector<TextLineStruct> textLines;
         GetSplitTextLinesInfo(pFont, cFont, pStr, nWidth, &textLines, nullptr);
 
         int startY = 0;
-        //垂直居中对齐
+        // 垂直居中对齐
         if (nAlignFlags & eTextAlignment::VCENTER)
         {
             nAlignFlags &= ~eTextAlignment::VCENTER;
-            int nTotalHeight = pFont->height * textLines.size(); //文本总高度
+            int nTotalHeight = pFont->height * textLines.size(); // 文本总高度
             if (nTotalHeight >= nHeight)
             {
                 if (nHeight < 2 * pFont->height)
@@ -330,18 +330,18 @@ namespace H3FontExtension
                 startY = (nHeight - nTotalHeight) / 2;
             }
         }
-        //垂直底部对齐
+        // 垂直底部对齐
         if (nAlignFlags & eTextAlignment::VBOTTOM)
         {
             nAlignFlags &= ~eTextAlignment::VBOTTOM;
-            int nTotalHeight = pFont->height * textLines.size(); //文本总高度
+            int nTotalHeight = pFont->height * textLines.size(); // 文本总高度
             if (nTotalHeight < nHeight)
             {
                 startY = nHeight - nTotalHeight;
             }
         }
 
-        //处理颜色代码
+        // 处理颜色代码
         nColorIdx = nColorIdx & 0x100 ? nColorIdx & 0xFE : nColorIdx + 9;
         uint32_t defaultColor = 0u;
 
@@ -362,7 +362,7 @@ namespace H3FontExtension
         int rowIdx = 0;
         for (const TextLineStruct& p : textLines)
         {
-            //水平左右对齐
+            // 水平左右对齐
             int startX = 0;
             switch (nAlignFlags)
             {
@@ -382,8 +382,12 @@ namespace H3FontExtension
             for (int i = 0; i < p.nStrLength; ++i)
             {
                 uint8_t currentChar = (uint8_t)p.pText[i];
+                if (currentChar == 0xFF)
+                {
+                    continue;
+                }
 
-                //结束文本截取
+                // 结束文本截取
                 if (colorNameSubIndex)
                 {
                     if (currentChar == '}')
@@ -415,14 +419,14 @@ namespace H3FontExtension
 
                 if (currentChar == '{') // 字符: '{'
                 {
-                    //判断是否是特殊颜色代码开始
+                    // 判断是否是特殊颜色代码开始
                     if (Cmpt_TextColor && currentChar == '{' && i + 1 < p.nStrLength && p.pText[i + 1] == '~')
                     {
                         colorNameSubIndex = i + 2;
                         continue;
                     }
 
-                    //传统颜色代码
+                    // 传统颜色代码
                     if (currentChar == '{')
                     {
                         textColor = H3BitMode::Get() == 4 ? pFont->palette.palette32->colors[nColorIdx + 1].GetColor()
@@ -437,18 +441,18 @@ namespace H3FontExtension
                     continue;
                 }
 
-                if (currentChar < 160)
-                {
-                    drawTextFunc(pFont, cFont, pPcx, currentChar, 0, nX + startX + posMove,
-                                 nY + startY + rowIdx * (std::max(pFont->height, cFont->Height) + cFont->MarginBottom),
-                                 textColor);
-                }
-                else
+                if (currentChar > 160 && (i + 1) <= p.nStrLength)
                 {
                     drawTextFunc(pFont, cFont, pPcx, currentChar, p.pText[i + 1], nX + startX + posMove,
                                  nY + startY + rowIdx * (std::max(pFont->height, cFont->Height) + cFont->MarginBottom),
                                  textColor);
                     ++i;
+                }
+                else
+                {
+                    drawTextFunc(pFont, cFont, pPcx, currentChar, 0, nX + startX + posMove,
+                                 nY + startY + rowIdx * (std::max(pFont->height, cFont->Height) + cFont->MarginBottom),
+                                 textColor);
                 }
 
                 posMove += GetFontCharWidth(pFont, cFont, currentChar);
@@ -478,7 +482,7 @@ namespace H3FontExtension
             return 0;
         }
 
-        //汉字字体
+        // 汉字字体
         HzkStrc* cFont = GetMappedHzkFont(pFont);
         int lineCount = GetSplitTextLinesInfo(pFont, cFont, pStr, nWidth, nullptr, nullptr);
         return lineCount;
@@ -493,10 +497,10 @@ namespace H3FontExtension
      */
     int __fastcall GetSplitWidth(H3Font* pFont, PUINT8 pStr, LPCSTR pSpliters)
     {
-        //汉字字体
+        // 汉字字体
         HzkStrc* cFont = GetMappedHzkFont(pFont);
 
-        //行首换行符
+        // 行首换行符
         while (*pStr == '\n')
             ++pStr;
 
@@ -505,7 +509,7 @@ namespace H3FontExtension
         int curLineWidth = 0;
         for (uint8_t code = *pStr; code; code = *++pStr)
         {
-            if (strrchr(pSpliters, code)) //换行符强制重置行宽
+            if (strrchr(pSpliters, code)) // 换行符强制重置行宽
             {
                 if (curLineWidth > maxLineWidth)
                 {
@@ -535,7 +539,7 @@ namespace H3FontExtension
             }
 
             curLineWidth += GetFontCharWidth(pFont, cFont, *pStr);
-            if (code > 160) //汉字占用双字节
+            if (code > 160) // 汉字占用双字节
             {
                 ++curLineWidth;
                 ++pStr;
@@ -599,7 +603,7 @@ namespace H3FontExtension
          * 这个问题仅出现在使用H3容器提前拆分行的情况，需要特殊处理。
          */
 
-        //汉字字体
+        // 汉字字体
         HzkStrc* cFont = GetMappedHzkFont(pFont);
         GetSplitTextLinesInfo(pFont, cFont, pStr, nWidth, nullptr, &stringVector);
     }
@@ -610,7 +614,7 @@ namespace H3FontExtension
      */
     bool Init()
     {
-        //加载配置
+        // 加载配置
         auto config = toml::parse_file("H3CN.toml");
 
         toml::array fontArr = *config["Fonts"].as_array();
@@ -643,7 +647,7 @@ namespace H3FontExtension
             MaxLineWidth = H3GameWidth::Get() / 2 - 32 * 2;
         }
 
-        //注入函数劫持
+        // 注入函数劫持
         H3Patcher::NakedHook5(0x4B51F0, (H3NakedFunction)TextDraw);
         H3Patcher::NakedHook5(0x4B5580, (H3NakedFunction)GetLinesCountInText);
         H3Patcher::NakedHook5(0x4B56F0, (H3NakedFunction)GetMaxLineWidth);
