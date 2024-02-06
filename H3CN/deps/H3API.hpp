@@ -2327,7 +2327,7 @@ namespace h3
 		return m_current != it.m_current;
 	}
 	template<typename T>
-	inline typename H3Map<T>::iterator& H3Map<T>::iterator::operator++()
+	inline H3Map<T>::iterator& H3Map<T>::iterator::operator++()
 	{
 		++m_current;
 		if (++m_x < m_map->m_dimensions)
@@ -2340,29 +2340,29 @@ namespace h3
 		return *this;
 	}
 	template<typename T>
-	inline typename H3Map<T>::iterator H3Map<T>::iterator::operator++(int)
+	inline H3Map<T>::iterator H3Map<T>::iterator::operator++(int)
 	{
 		iterator it(*this);
 		++(*this);
 		return it;
 	}
 	template<typename T>
-	inline typename H3Map<T>::pointer H3Map<T>::iterator::operator->() const
+	inline H3Map<T>::pointer H3Map<T>::iterator::operator->() const
 	{
 		return m_current;
 	}
 	template<typename T>
-	inline typename H3Map<T>::pointer H3Map<T>::iterator::operator&() const
+	inline H3Map<T>::pointer H3Map<T>::iterator::operator&() const
 	{
 		return m_current;
 	}
 	template<typename T>
-	inline typename H3Map<T>::reference H3Map<T>::iterator::operator*() const
+	inline H3Map<T>::reference H3Map<T>::iterator::operator*() const
 	{
 		return *m_current;
 	}
 	template<typename T>
-	inline typename H3Map<T>::reference H3Map<T>::iterator::operator()(INT32 dx, INT32 dy) const
+	inline H3Map<T>::reference H3Map<T>::iterator::operator()(INT32 dx, INT32 dy) const
 	{
 		return m_current[dx + m_map->m_dimensions * dy];
 	}
@@ -2388,17 +2388,17 @@ namespace h3
 		return H3Point(m_x, m_y, m_z);
 	}
 	template<typename T>
-	inline typename H3Map<T>::iterator H3Map<T>::begin()
+	inline H3Map<T>::iterator H3Map<T>::begin()
 	{
 		return iterator(this, 0, 0, 0);
 	}
 	template<typename T>
-	inline typename H3Map<T>::iterator H3Map<T>::end()
+	inline H3Map<T>::iterator H3Map<T>::end()
 	{
 		return iterator(this, 0, 0, m_levels);
 	}
 	template<typename T>
-	inline typename H3Map<T>::iterator H3Map<T>::operator()(UINT x, UINT y, UINT z)
+	inline H3Map<T>::iterator H3Map<T>::operator()(UINT x, UINT y, UINT z)
 	{
 		return iterator(this, x, y, z);
 	}
@@ -2410,12 +2410,12 @@ namespace h3
 	{
 	}
 	template<typename T>
-	inline typename H3Map<T>::reference H3Map<T>::At(UINT x, UINT y, UINT z)
+	inline H3Map<T>::reference H3Map<T>::At(UINT x, UINT y, UINT z)
 	{
 		return *at(x, y, z);
 	}
 	template<typename T>
-	inline typename H3Map<T>::pointer H3Map<T>::at(UINT x, UINT y, UINT z)
+	inline H3Map<T>::pointer H3Map<T>::at(UINT x, UINT y, UINT z)
 	{
 		return &m_base[x + m_dimensions * (y + z * m_dimensions)];
 	}
@@ -2433,14 +2433,14 @@ namespace h3
 	}
 
 	template<typename T>
-	inline typename H3FastMap<T>::iterator& H3FastMap<T>::iterator::operator++()
+	inline H3FastMap<T>::iterator& H3FastMap<T>::iterator::operator++()
 	{
 		++m_current;
 		return *this;
 	}
 
 	template<typename T>
-	inline typename H3FastMap<T>::iterator H3FastMap<T>::iterator::operator++(int)
+	inline H3FastMap<T>::iterator H3FastMap<T>::iterator::operator++(int)
 	{
 		iterator it(*this);
 		++m_current;
@@ -2448,7 +2448,7 @@ namespace h3
 	}
 
 	template<typename T>
-	inline typename H3FastMap<T>::reference H3FastMap<T>::iterator::operator()(INT32 dx, INT32 dy) const
+	inline H3FastMap<T>::reference H3FastMap<T>::iterator::operator()(INT32 dx, INT32 dy) const
 	{
 		return m_current[dx + m_dimensions * dy];
 	}
@@ -2475,34 +2475,34 @@ namespace h3
 	}
 
 	template<typename T>
-	inline typename H3FastMap<T>::reference H3FastMap<T>::iterator::operator*() const
+	inline H3FastMap<T>::reference H3FastMap<T>::iterator::operator*() const
 	{
 		return *m_current;
 	}
 
 	template<typename T>
-	inline typename H3FastMap<T>::pointer H3FastMap<T>::iterator::operator&() const
+	inline H3FastMap<T>::pointer H3FastMap<T>::iterator::operator&() const
 	{
 		return m_current;
 	}
 
 	template<typename T>
-	inline typename H3FastMap<T>::pointer H3FastMap<T>::iterator::operator->() const
+	inline H3FastMap<T>::pointer H3FastMap<T>::iterator::operator->() const
 	{
 		return m_current;
 	}
 	template<typename T>
-	inline typename H3FastMap<T>::iterator H3FastMap<T>::begin()
+	inline H3FastMap<T>::iterator H3FastMap<T>::begin()
 	{
 		return iterator(this, 0, 0, 0);
 	}
 	template<typename T>
-	inline typename H3FastMap<T>::iterator H3FastMap<T>::end()
+	inline H3FastMap<T>::iterator H3FastMap<T>::end()
 	{
 		return iterator(this, 0, 0, m_levels);
 	}
 	template<typename T>
-	inline typename H3FastMap<T>::iterator H3FastMap<T>::operator()(UINT x, UINT y, UINT z)
+	inline H3FastMap<T>::iterator H3FastMap<T>::operator()(UINT x, UINT y, UINT z)
 	{
 		return iterator(this, x, y, z);
 	}
@@ -2514,7 +2514,7 @@ namespace h3
 	{
 	}
 	template<typename T>
-	inline typename H3FastMap<T>::reference H3FastMap<T>::At(UINT x, UINT y, UINT z)
+	inline H3FastMap<T>::reference H3FastMap<T>::At(UINT x, UINT y, UINT z)
 	{
 		return *at(x, y, z);
 	}
@@ -2535,7 +2535,7 @@ namespace h3
 		return p;
 	}
 	template<typename T>
-	inline typename H3FastMap<T>::pointer H3FastMap<T>::at(UINT x, UINT y, UINT z)
+	inline H3FastMap<T>::pointer H3FastMap<T>::at(UINT x, UINT y, UINT z)
 	{
 		return &m_base[x + m_dimensions * (y + z * m_dimensions)];
 	}
@@ -8961,30 +8961,30 @@ namespace h3
 	{
 	}
 	template<UINT size>
-	inline typename H3Bitset<size>::iterator& H3Bitset<size>::iterator::operator++()
+	inline H3Bitset<size>::iterator& H3Bitset<size>::iterator::operator++()
 	{
 		++m_position;
 		return *this;
 	}
 	template<UINT size>
-	inline typename  H3Bitset<size>::iterator H3Bitset<size>::iterator::operator++(int)
+	inline  H3Bitset<size>::iterator H3Bitset<size>::iterator::operator++(int)
 	{
 		iterator it(m_bitset, m_position);
 		++m_position;
 		return it;
 	}
 	template<UINT size>
-	inline typename H3Bitset<size>::iterator& H3Bitset<size>::iterator::operator*()
+	inline H3Bitset<size>::iterator& H3Bitset<size>::iterator::operator*()
 	{
 		return *this;
 	}
 	template<UINT size>
-	inline typename H3Bitset<size>::iterator* H3Bitset<size>::iterator::operator->()
+	inline H3Bitset<size>::iterator* H3Bitset<size>::iterator::operator->()
 	{
 		return this;
 	}
 	template<UINT size>
-	inline typename H3Bitset<size>::iterator& H3Bitset<size>::iterator::operator~()
+	inline H3Bitset<size>::iterator& H3Bitset<size>::iterator::operator~()
 	{
 		Flip();
 		return *this;
@@ -9320,19 +9320,19 @@ namespace h3
 	}
 
 	template<UINT size>
-	inline typename H3Bitset<size>::iterator H3Bitset<size>::begin()
+	inline H3Bitset<size>::iterator H3Bitset<size>::begin()
 	{
 		return iterator(this, 0);
 	}
 
 	template<UINT size>
-	inline typename H3Bitset<size>::iterator H3Bitset<size>::end()
+	inline H3Bitset<size>::iterator H3Bitset<size>::end()
 	{
 		return iterator(this, size);
 	}
 
 	template<UINT size>
-	inline typename H3Bitset<size>::iterator H3Bitset<size>::operator[](UINT position)
+	inline H3Bitset<size>::iterator H3Bitset<size>::operator[](UINT position)
 	{
 		return iterator(this, position);
 	}
@@ -11491,43 +11491,43 @@ namespace h3
 #pragma pack(pop) /* align-4 */
 
     template<typename T, UINT NilNode>
-    inline typename H3Set<T, NilNode>::Node* H3Set<T, NilNode>::head() const
+    inline H3Set<T, NilNode>::Node* H3Set<T, NilNode>::head() const
     {
         return m_root->parent;
     }
 
 #ifndef _H3API_CPLUSPLUS11_
     template<typename T, UINT NilNode>
-    inline typename _H3API_FORCEINLINE_ H3Set<T, NilNode>::Node** H3Set<T, NilNode>::_Nil()
+    inline _H3API_FORCEINLINE_ H3Set<T, NilNode>::Node** H3Set<T, NilNode>::_Nil()
     {
         return reinterpret_cast<Node**>(NilNode);
     }
 #endif
 
     template<typename T, UINT NilNode>
-    inline typename H3Set<T, NilNode>::NodePtr H3Set<T, NilNode>::Nil() const
+    inline H3Set<T, NilNode>::NodePtr H3Set<T, NilNode>::Nil() const
     {
         return NodePtr(PtrAt(NilNode));
     }
 
     template<typename T, UINT NilNode>
-    inline typename H3Set<T, NilNode>::iterator H3Set<T, NilNode>::begin()
+    inline H3Set<T, NilNode>::iterator H3Set<T, NilNode>::begin()
     {
         return iterator(m_root->left);
     }
     template<typename T, UINT NilNode>
-    inline typename H3Set<T, NilNode>::iterator H3Set<T, NilNode>::begin() const
+    inline H3Set<T, NilNode>::iterator H3Set<T, NilNode>::begin() const
     {
         return iterator(m_root->left);
     }
 
     template<typename T, UINT NilNode>
-    inline typename H3Set<T, NilNode>::iterator H3Set<T, NilNode>::end()
+    inline H3Set<T, NilNode>::iterator H3Set<T, NilNode>::end()
     {
         return iterator(m_root);
     }
     template<typename T, UINT NilNode>
-    inline typename H3Set<T, NilNode>::iterator H3Set<T, NilNode>::end() const
+    inline H3Set<T, NilNode>::iterator H3Set<T, NilNode>::end() const
     {
         return iterator(m_root);
     }
@@ -11539,7 +11539,7 @@ namespace h3
     }
 
     template<typename T, UINT NilNode>
-    inline typename H3Set<T, NilNode>::iterator H3Set<T, NilNode>::Find(const T& key) const
+    inline H3Set<T, NilNode>::iterator H3Set<T, NilNode>::Find(const T& key) const
     {
         NodePtr end_node = NodePtr(PtrAt(NilNode));
         NodePtr it = head();
@@ -11562,13 +11562,13 @@ namespace h3
     }
 
     template<typename T, UINT NilNode>
-    inline typename H3Set<T, NilNode>::Node* H3Set<T, NilNode>::iterator::endNode() const
+    inline H3Set<T, NilNode>::Node* H3Set<T, NilNode>::iterator::endNode() const
     {
         return NodePtr(PtrAt(NilNode));
     }
 
     template<typename T, UINT NilNode>
-    inline typename H3Set<T, NilNode>::iterator& H3Set<T, NilNode>::iterator::operator++()
+    inline H3Set<T, NilNode>::iterator& H3Set<T, NilNode>::iterator::operator++()
     {
         NodePtr end_node = endNode();
         NodePtr node = m_node->right;
@@ -11593,7 +11593,7 @@ namespace h3
     }
 
     template<typename T, UINT NilNode>
-    inline typename H3Set<T, NilNode>::iterator H3Set<T, NilNode>::iterator::operator++(int)
+    inline H3Set<T, NilNode>::iterator H3Set<T, NilNode>::iterator::operator++(int)
     {
         iterator it(m_node);
         ++(*this);
@@ -11631,7 +11631,7 @@ namespace h3
     }
 
     template<typename T, UINT NilNode>
-    inline typename H3Set<T, NilNode>::Node* H3Set<T, NilNode>::iterator::Get() const
+    inline H3Set<T, NilNode>::Node* H3Set<T, NilNode>::iterator::Get() const
     {
         return m_node;
     }
@@ -16957,12 +16957,12 @@ namespace h3
 #pragma pack(pop) /* align-4 */
 
 	template<typename ItemType>
-	inline typename ItemType* H3BaseDlg::Get(UINT16 id)
+	inline ItemType* H3BaseDlg::Get(UINT16 id)
 	{
 		return reinterpret_cast<ItemType*>(GetH3DlgItem(id));
 	}
 	template<typename ItemType>
-	inline typename ItemType* H3BaseDlg::get(UINT16 id) const
+	inline ItemType* H3BaseDlg::get(UINT16 id) const
 	{
 		return reinterpret_cast<ItemType*>(getDlgItem(id, ItemType::VTABLE));
 	}
@@ -20117,7 +20117,7 @@ namespace h3
 #pragma pack(pop) /* align-4 */
 
 	template<typename ItemType>
-	inline typename ItemType* H3DlgItem::Cast()
+	inline ItemType* H3DlgItem::Cast()
 	{
 		return reinterpret_cast<ItemType*>(this);
 	}
@@ -21883,7 +21883,7 @@ namespace h3
     }
 
     template<typename T>
-    inline typename H3Tree<T>::H3Node* H3Tree<T>::H3Node::Next()
+    inline H3Tree<T>::H3Node* H3Tree<T>::H3Node::Next()
     {
         H3Node* node;
         if (node = m_right)
@@ -21903,7 +21903,7 @@ namespace h3
     }
 
     template<typename T>
-    inline typename H3Tree<T>::H3Node* H3Tree<T>::H3Node::Previous()
+    inline H3Tree<T>::H3Node* H3Tree<T>::H3Node::Previous()
     {
         H3Node* node;
         if (node = m_left)
@@ -21923,7 +21923,7 @@ namespace h3
     }
 
     template<typename T>
-    inline typename H3Tree<T>::H3Node* H3Tree<T>::H3Node::LeftMost()
+    inline H3Tree<T>::H3Node* H3Tree<T>::H3Node::LeftMost()
     {
         H3Node* node = this;
         while (node->m_left)
@@ -21932,14 +21932,14 @@ namespace h3
     }
 
     template<typename T>
-    inline typename H3Tree<T>::iterator& H3Tree<T>::iterator::operator++()
+    inline H3Tree<T>::iterator& H3Tree<T>::iterator::operator++()
     {
         m_ptr = m_ptr->Next();
         return *this;
     }
 
     template<typename T>
-    inline typename H3Tree<T>::iterator H3Tree<T>::iterator::operator++(int)
+    inline H3Tree<T>::iterator H3Tree<T>::iterator::operator++(int)
     {
         iterator it(m_ptr);
         m_ptr = m_ptr->Next();
@@ -21947,14 +21947,14 @@ namespace h3
     }
 
     template<typename T>
-    inline typename H3Tree<T>::iterator& H3Tree<T>::iterator::operator--()
+    inline H3Tree<T>::iterator& H3Tree<T>::iterator::operator--()
     {
         m_ptr = m_ptr->Previous();
         return *this;
     }
 
     template<typename T>
-    inline typename H3Tree<T>::iterator H3Tree<T>::iterator::operator--(int)
+    inline H3Tree<T>::iterator H3Tree<T>::iterator::operator--(int)
     {
         iterator it(m_ptr);
         m_ptr = m_ptr->Previous();
@@ -21962,13 +21962,13 @@ namespace h3
     }
 
     template<typename T>
-    inline typename T& H3Tree<T>::iterator::operator*() const
+    inline T& H3Tree<T>::iterator::operator*() const
     {
         return m_ptr->m_data;
     }
 
     template<typename T>
-    inline typename T* H3Tree<T>::iterator::operator->() const
+    inline T* H3Tree<T>::iterator::operator->() const
     {
         return &m_ptr->m_data;
     }
@@ -21992,14 +21992,14 @@ namespace h3
     }
 
     template<typename T>
-    inline typename H3Tree<T>::const_iterator& h3::H3Tree<T>::const_iterator::operator++()
+    inline H3Tree<T>::const_iterator& h3::H3Tree<T>::const_iterator::operator++()
     {
         m_ptr = next(m_ptr);
         return *this;
     }
 
     template<typename T>
-    inline typename H3Tree<T>::const_iterator H3Tree<T>::const_iterator::operator++(int)
+    inline H3Tree<T>::const_iterator H3Tree<T>::const_iterator::operator++(int)
     {
         const_iterator it(m_ptr);
         m_ptr = next(m_ptr);
@@ -22007,14 +22007,14 @@ namespace h3
     }
 
     template<typename T>
-    inline typename H3Tree<T>::const_iterator& H3Tree<T>::const_iterator::operator--()
+    inline H3Tree<T>::const_iterator& H3Tree<T>::const_iterator::operator--()
     {
         m_ptr = previous(m_ptr);
         return *this;
     }
 
     template<typename T>
-    inline typename H3Tree<T>::const_iterator H3Tree<T>::const_iterator::operator--(int)
+    inline H3Tree<T>::const_iterator H3Tree<T>::const_iterator::operator--(int)
     {
         const_iterator it(m_ptr);
         m_ptr = previous(m_ptr);
@@ -22065,37 +22065,37 @@ namespace h3
     }
 
     template<typename T>
-    inline typename H3Tree<T>::iterator H3Tree<T>::begin()
+    inline H3Tree<T>::iterator H3Tree<T>::begin()
     {
         return iterator(m_begin);
     }
 
     template<typename T>
-    inline typename H3Tree<T>::iterator H3Tree<T>::end()
+    inline H3Tree<T>::iterator H3Tree<T>::end()
     {
         return iterator(m_end);
     }
 
     template<typename T>
-    inline typename H3Tree<T>::const_iterator H3Tree<T>::begin() const
+    inline H3Tree<T>::const_iterator H3Tree<T>::begin() const
     {
         return const_iterator(m_begin);
     }
 
     template<typename T>
-    inline typename H3Tree<T>::const_iterator H3Tree<T>::end() const
+    inline H3Tree<T>::const_iterator H3Tree<T>::end() const
     {
         return const_iterator(m_end);
     }
 
     template<typename T>
-    inline typename H3Tree<T>::const_iterator H3Tree<T>::cbegin() const
+    inline H3Tree<T>::const_iterator H3Tree<T>::cbegin() const
     {
         return const_iterator(m_begin);
     }
 
     template<typename T>
-    inline typename H3Tree<T>::const_iterator H3Tree<T>::cend() const
+    inline H3Tree<T>::const_iterator H3Tree<T>::cend() const
     {
         return const_iterator(m_end);
     }
@@ -22135,13 +22135,13 @@ namespace h3
     }
 
     template<typename T>
-    inline typename H3Tree<T>::iterator H3Tree<T>::Find(const T& data)
+    inline H3Tree<T>::iterator H3Tree<T>::Find(const T& data)
     {
         return iterator(find(data));
     }
 
     template<typename T>
-    inline typename H3Tree<T>::const_iterator H3Tree<T>::Find(const T& data) const
+    inline H3Tree<T>::const_iterator H3Tree<T>::Find(const T& data) const
     {
         return const_iterator(find(data));
     }
@@ -22153,7 +22153,7 @@ namespace h3
     }
 
     template<typename T>
-    inline typename H3Tree<T>::H3Node* H3Tree<T>::find(const T& data)
+    inline H3Tree<T>::H3Node* H3Tree<T>::find(const T& data)
     {
         H3Node* root = m_end;
         H3Node* node = m_end->m_left;
