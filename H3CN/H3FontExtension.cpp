@@ -52,7 +52,7 @@ namespace H3FontExtension
         {
             PUINT8 pFontBuffer = pFont->GetChar(nCode1);
             int startX = nX + pFont->width[nCode1].leftMargin;
-            int startY = nY + (cFont->Height - pFont->height) / 2;
+            int startY = nY;
             for (int nRow = 0; nRow < pFont->height; ++nRow)
             {
                 for (int nColumn = 0; nColumn < pFont->width[nCode1].span; ++nColumn)
