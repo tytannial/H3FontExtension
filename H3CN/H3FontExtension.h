@@ -96,8 +96,7 @@ namespace H3FontExtension
             // position - 0xA1);
 
             // GBK
-            return this->FontFileBuffer +
-                   this->Width * ((this->Height + 7) >> 3) * ((section - 0x81) * 0xBF + position - 0x40);
+            return this->FontFileBuffer + this->Width * this->Height * ((section - 0x81) * 0xBF + position - 0x40);
         }
     };
 
@@ -105,9 +104,6 @@ namespace H3FontExtension
     static HzkStrc* HzkFont[9];
 
     static std::map<h3::H3Font*, HzkStrc*> FontMap;
-
-    typedef bool(__fastcall* DrawTextChar)(h3::H3Font* pFont, HzkStrc* cFont, h3::H3LoadedPcx16* pOutputPcx,
-                                           uint8_t nCode1, uint8_t nCode2, int nX, int nY, uint32_t nTextColor);
 
     bool Init();
 } // namespace H3FontExtension

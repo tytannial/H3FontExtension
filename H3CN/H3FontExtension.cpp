@@ -44,10 +44,8 @@ namespace H3FontExtension
      * @param nShadowColor 阴影RGB颜色码
      * @return
      */
-    template<typename T>
-        requires(std::same_as<T, uint32_t> || std::same_as<T, uint16_t>)
-    bool __fastcall DrawTextChar_t(H3Font* pFont, HzkStrc* cFont, H3LoadedPcx16* pOutputPcx, uint8_t nCode1,
-                                   uint8_t nCode2, int nX, int nY, T nFontColor, T nShadowColor)
+    bool __fastcall DrawTextChar(H3Font* pFont, HzkStrc* cFont, H3LoadedPcx16* pOutputPcx, uint8_t nCode1,
+                                 uint8_t nCode2, int nX, int nY, DWORD nFontColor)
     {
         // 绘制英文文字
         if (nCode2 == 0)
@@ -65,14 +63,29 @@ namespace H3FontExtension
                         continue;
                     }
 
-                    // 255表示绘制正常颜色，否则则绘制阴影
-                    if (nPixcel == 255)
+                    if (H3BitMode::Get() == 4)
                     {
-                        *((T*)pOutputPcx->GetRow(startY + nRow) + startX + nColumn) = nFontColor;
+                        // 255表示绘制正常颜色，否则则绘制阴影
+                        if (nPixcel == 255)
+                        {
+                            *((DWORD*)pOutputPcx->GetRow(startY + nRow) + startX + nColumn) = nFontColor;
+                        }
+                        else
+                        {
+                            *((DWORD*)pOutputPcx->GetRow(startY + nRow) + startX + nColumn) = ShadowColor32;
+                        }
                     }
                     else
                     {
-                        *((T*)pOutputPcx->GetRow(startY + nRow) + startX + nColumn) = nShadowColor;
+                        // 255表示绘制正常颜色，否则则绘制阴影
+                        if (nPixcel == 255)
+                        {
+                            *((WORD*)pOutputPcx->GetRow(startY + nRow) + startX + nColumn) = (WORD)nFontColor;
+                        }
+                        else
+                        {
+                            *((WORD*)pOutputPcx->GetRow(startY + nRow) + startX + nColumn) = ShadowColor16;
+                        }
                     }
                 }
             }
@@ -90,63 +103,42 @@ namespace H3FontExtension
         {
             for (int nColumn = 0; nColumn < cFont->Width; ++nColumn)
             {
-                uint8_t mask = *(pFontFileBuffer + nColumn / 8 + (cFont->Height + 7) / 8 * nRow);
-                if ((1 << (7 - nColumn % 8)) & mask)
+                uint8_t alpha = *(pFontFileBuffer + (cFont->Height * nRow + nColumn));
+                if (alpha == 0)
                 {
-                    // 绘制正常像素点
-                    *((T*)pOutputPcx->GetRow(startY + nRow) + startX + nColumn) = nFontColor;
+                    continue;
+                }
+
+                // 绘制正常像素点
+                if (H3BitMode::Get() == 4)
+                {
+                    auto rgbFontColor = new H3ARGB888(nFontColor);
+                    rgbFontColor->Darken(255 - alpha);
+                    *((DWORD*)pOutputPcx->GetRow(startY + nRow) + startX + nColumn) = rgbFontColor->GetColor();
+                    // 是否绘制阴影
+                    if (!cFont->DrawShadow)
+                    {
+                        continue;
+                    }
+                    // 绘制阴影
+                    *((DWORD*)pOutputPcx->GetRow(startY + nRow + 1) + startX + nColumn + 1) = ShadowColor32;
+                }
+                else
+                {
+                    auto rgbFontColor = new H3RGB565((RGB565)nFontColor);
+                    *((WORD*)pOutputPcx->GetRow(startY + nRow) + startX + nColumn) = rgbFontColor->GetBits();
                     // 是否绘制阴影
                     if (!cFont->DrawShadow)
                     {
                         continue;
                     }
                     // 判断右下角像素颜色，绘制阴影
-                    auto c = pOutputPcx->GetPixel(startX + nColumn + 1, startY + nRow + 1).GetColor();
-                    if (c != nFontColor)
-                    {
-                        *((T*)pOutputPcx->GetRow(startY + nRow + 1) + startX + nColumn + 1) = nShadowColor;
-                    }
+                    *((WORD*)pOutputPcx->GetRow(startY + nRow + 1) + startX + nColumn + 1) = ShadowColor16;
                 }
             }
         }
 
         return true;
-    }
-    /**
-     * @brief 32位色绘制文本
-     * @param pFont ASCII字体
-     * @param cFont 扩展字体
-     * @param pOutputPcx 图像输出
-     * @param nCode1 字符编码高位
-     * @param nCode2 字符编码低位
-     * @param nX 绘制位置左上角X坐标
-     * @param nY 绘制位置左上角Y坐标
-     * @param nFontColor RGB颜色码（32位色）
-     * @param nShadowColor 阴影RGB颜色码（32位色）
-     * @return
-     */
-    bool __fastcall DrawTextChar32(H3Font* pFont, HzkStrc* cFont, H3LoadedPcx16* pOutputPcx, uint8_t nCode1,
-                                   uint8_t nCode2, int nX, int nY, uint32_t nFontColor)
-    {
-        return DrawTextChar_t(pFont, cFont, pOutputPcx, nCode1, nCode2, nX, nY, nFontColor, ShadowColor32);
-    }
-    /**
-     * @brief 16位色绘制文本
-     * @param pFont ASCII字体
-     * @param cFont 扩展字体
-     * @param pOutputPcx 图像输出
-     * @param nCode1 字符编码高位
-     * @param nCode2 字符编码低位
-     * @param nX 绘制位置左上角X坐标
-     * @param nY 绘制位置左上角Y坐标
-     * @param nFontColor RGB颜色码（32位色）
-     * @param nShadowColor 阴影RGB颜色码（16位色）
-     * @return
-     */
-    bool __fastcall DrawTextChar16(H3Font* pFont, HzkStrc* cFont, H3LoadedPcx16* pOutputPcx, uint8_t nCode1,
-                                   uint8_t nCode2, int nX, int nY, uint32_t nFontColor)
-    {
-        return DrawTextChar_t(pFont, cFont, pOutputPcx, nCode1, nCode2, nX, nY, (uint16_t)nFontColor, ShadowColor16);
     }
 
     /**
@@ -343,18 +335,15 @@ namespace H3FontExtension
 
         // 处理颜色代码
         nColorIdx = nColorIdx & 0x100 ? nColorIdx & 0xFE : nColorIdx + 9;
-        uint32_t defaultColor = 0u;
 
-        DrawTextChar drawTextFunc;
+        uint32_t defaultColor = 0u;
         if (H3BitMode::Get() == 4)
         {
             defaultColor = pFont->palette.palette32->colors[nColorIdx].GetColor();
-            drawTextFunc = DrawTextChar32;
         }
         else
         {
             defaultColor = pFont->palette.color[nColorIdx].Value();
-            drawTextFunc = DrawTextChar16;
         }
 
         DWORD textColor = defaultColor;
@@ -443,14 +432,14 @@ namespace H3FontExtension
 
                 if (currentChar > 160 && (i + 1) <= p.nStrLength)
                 {
-                    drawTextFunc(pFont, cFont, pPcx, currentChar, p.pText[i + 1], nX + startX + posMove,
+                    DrawTextChar(pFont, cFont, pPcx, currentChar, p.pText[i + 1], nX + startX + posMove,
                                  nY + startY + rowIdx * (std::max(pFont->height, cFont->Height) + cFont->MarginBottom),
                                  textColor);
                     ++i;
                 }
                 else
                 {
-                    drawTextFunc(pFont, cFont, pPcx, currentChar, 0, nX + startX + posMove,
+                    DrawTextChar(pFont, cFont, pPcx, currentChar, 0, nX + startX + posMove,
                                  nY + startY + rowIdx * (std::max(pFont->height, cFont->Height) + cFont->MarginBottom),
                                  textColor);
                 }

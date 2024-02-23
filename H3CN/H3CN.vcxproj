@@ -102,6 +102,12 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
     </Link>
+    <PostBuildEvent>
+      <Message>
+      </Message>
+      <Command>copy /Y "$(TargetDir)H3CN.dll" "G:\Games\HoMM 3 Complete\plugins\H3CN.asi"
+copy /Y "$(TargetDir)H3CN.pdb" "G:\Games\HoMM 3 Complete\plugins\H3CN.pdb"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
