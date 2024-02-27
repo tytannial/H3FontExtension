@@ -126,6 +126,7 @@ namespace H3FontExtension
                 else
                 {
                     auto rgbFontColor = new H3RGB565((RGB565)nFontColor);
+                    rgbFontColor->Darken(255 - alpha);
                     *((WORD*)pOutputPcx->GetRow(startY + nRow) + startX + nColumn) = rgbFontColor->GetBits();
                     // 是否绘制阴影
                     if (!cFont->DrawShadow)
