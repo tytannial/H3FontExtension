@@ -21,11 +21,11 @@ MaxLineWidth = 400 # 最大行宽度
 
 [[Fonts]]
 Name = "tiny.fnt"
-HzkFont = "Fonts/Hzk_Tiny"
+HzkFont = "Fonts/Hzk_Small"
 Height = 12
 Width = 12
 MarginLeft = 1
-MarginRight = 1
+MarginRight = 0
 MarginBottom = 0
 DrawShadow = false
 
@@ -35,7 +35,7 @@ HzkFont = "Fonts/Hzk_Small"
 Height = 12
 Width = 12
 MarginLeft = 1
-MarginRight = 1
+MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
 
@@ -45,7 +45,7 @@ HzkFont = "Fonts/Hzk_Medium"
 Height = 16
 Width = 16
 MarginLeft = 1
-MarginRight = 1
+MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
 
@@ -55,56 +55,56 @@ HzkFont = "Fonts/Hzk_Big"
 Height = 24
 Width = 24
 MarginLeft = 2
-MarginRight = 2
+MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
 
 [[Fonts]]
 Name = "calli10r.fnt"
-HzkFont = "Fonts/Hzk_Calli10r"
+HzkFont = "Fonts/Hzk_Small"
 Height = 12
 Width = 12
 MarginLeft = 1
-MarginRight = 1
+MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
 
 [[Fonts]]
 Name = "credits.fnt"
-HzkFont = "Fonts/Hzk_Credits"
+HzkFont = "Fonts/Hzk_Big"
 Height = 24
 Width = 24
 MarginLeft = 2
-MarginRight = 2
+MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
 
 [[Fonts]]
 Name = "hiscore.fnt"
-HzkFont = "Fonts/Hzk_Hiscore"
+HzkFont = "Fonts/Hzk_Small"
 Height = 12
 Width = 12
 MarginLeft = 1
-MarginRight = 1
+MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
 
 [[Fonts]]
 Name = "times08r.fnt"
-HzkFont = "Fonts/Hzk_Times08r"
+HzkFont = "Fonts/Hzk_Small"
 Height = 12
 Width = 12
 MarginLeft = 1
-MarginRight = 1
+MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
 
 [[Fonts]]
 Name = "verd10b.fnt"
-HzkFont = "Fonts/Hzk_Verd10b"
+HzkFont = "Fonts/Hzk_Small"
 Height = 12
 Width = 12
 MarginLeft = 1
-MarginRight = 1
+MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
