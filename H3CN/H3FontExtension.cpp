@@ -228,7 +228,7 @@ namespace H3FontExtension
                     charWidth = GetFontCharWidth(pFont, cFont, currentChar);
                 }
 
-                if (currentLineWidth + charWidth > nWidth + charWidth)
+                if (currentLineWidth + charWidth > nWidth)
                 {
                     ++lineCount;
                     if (textLines)
