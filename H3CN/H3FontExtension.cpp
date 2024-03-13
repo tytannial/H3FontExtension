@@ -30,6 +30,30 @@ namespace H3FontExtension
         return HzkFont[1];
     }
 
+    DWORD __fastcall GetColor16(const H3BasePalette565& palette, int colorIdx)
+    {
+        return palette.color[colorIdx].GetRGB888();
+    }
+
+    DWORD __fastcall GetColor32(const H3BasePalette565& palette, int colorIdx)
+    {
+        return palette.palette32->colors[colorIdx];
+    }
+
+    DWORD(__fastcall* GetColor)(const H3BasePalette565& palette, int colorIdx);
+
+    void __fastcall DrawPixcel16(const PUINT8 rowBuffer, int col, DWORD color)
+    {
+        *((WORD*)rowBuffer + col) = (WORD)color;
+    }
+
+    void __fastcall DrawPixcel32(const PUINT8 rowBuffer, int col, DWORD color)
+    {
+        *((DWORD*)rowBuffer + col) = color;
+    }
+
+    void(__fastcall* DrawPixcel)(const PUINT8 rowBuffer, int col, DWORD color);
+
     /**
      * @brief 绘制文字 H3中文: 0x532230 0x40C5B3
      * @tparam T 彩色模式类型 仅支持 16位色、32位色
@@ -63,29 +87,14 @@ namespace H3FontExtension
                         continue;
                     }
 
-                    if (H3BitMode::Get() == 4)
+                    // 255表示绘制正常颜色，否则则绘制阴影
+                    if (nPixcel == 255)
                     {
-                        // 255表示绘制正常颜色，否则则绘制阴影
-                        if (nPixcel == 255)
-                        {
-                            *((DWORD*)pOutputPcx->GetRow(startY + nRow) + startX + nColumn) = nFontColor;
-                        }
-                        else
-                        {
-                            *((DWORD*)pOutputPcx->GetRow(startY + nRow) + startX + nColumn) = ShadowColor32;
-                        }
+                        DrawPixcel(pOutputPcx->GetRow(startY + nRow), startX + nColumn, nFontColor);
                     }
                     else
                     {
-                        // 255表示绘制正常颜色，否则则绘制阴影
-                        if (nPixcel == 255)
-                        {
-                            *((WORD*)pOutputPcx->GetRow(startY + nRow) + startX + nColumn) = (WORD)nFontColor;
-                        }
-                        else
-                        {
-                            *((WORD*)pOutputPcx->GetRow(startY + nRow) + startX + nColumn) = ShadowColor16;
-                        }
+                        DrawPixcel(pOutputPcx->GetRow(startY + nRow), startX + nColumn, ShadowColor);
                     }
                 }
             }
@@ -97,7 +106,7 @@ namespace H3FontExtension
 
         // 左边距为1，对齐Y中轴
         int startX = nX + cFont->MarginLeft;
-        int startY = nY + (pFont->height - cFont->Height) / 2;
+        int startY = nY;
         PUINT8 pFontFileBuffer = cFont->GetHzkCharacterPcxPointer(nCode1, nCode2);
         for (int nRow = 0; nRow < cFont->Height; ++nRow)
         {
@@ -109,33 +118,16 @@ namespace H3FontExtension
                     continue;
                 }
 
-                // 绘制正常像素点
-                if (H3BitMode::Get() == 4)
+                auto rgbFontColor = H3ARGB888(nFontColor);
+                rgbFontColor.Darken(-alpha);
+                DrawPixcel(pOutputPcx->GetRow(startY + nRow), startX + nColumn, rgbFontColor.Value());
+                // 是否绘制阴影
+                if (!cFont->DrawShadow)
                 {
-                    auto rgbFontColor = new H3ARGB888(nFontColor);
-                    rgbFontColor->Darken(255 - alpha);
-                    *((DWORD*)pOutputPcx->GetRow(startY + nRow) + startX + nColumn) = rgbFontColor->GetColor();
-                    // 是否绘制阴影
-                    if (!cFont->DrawShadow)
-                    {
-                        continue;
-                    }
-                    // 绘制阴影
-                    *((DWORD*)pOutputPcx->GetRow(startY + nRow + 1) + startX + nColumn + 1) = ShadowColor32;
+                    continue;
                 }
-                else
-                {
-                    auto rgbFontColor = new H3RGB565((RGB565)nFontColor);
-                    rgbFontColor->Darken(255 - alpha);
-                    *((WORD*)pOutputPcx->GetRow(startY + nRow) + startX + nColumn) = rgbFontColor->GetBits();
-                    // 是否绘制阴影
-                    if (!cFont->DrawShadow)
-                    {
-                        continue;
-                    }
-                    // 判断右下角像素颜色，绘制阴影
-                    *((WORD*)pOutputPcx->GetRow(startY + nRow + 1) + startX + nColumn + 1) = ShadowColor16;
-                }
+                // 绘制阴影
+                DrawPixcel(pOutputPcx->GetRow(startY + nRow + 1), startX + nColumn + 1, ShadowColor);
             }
         }
 
@@ -299,6 +291,18 @@ namespace H3FontExtension
             return;
         }
 
+        // 根据游戏的图像模式初始化图像渲染
+        if (H3BitMode::Get() == 4)
+        {
+            GetColor = GetColor32;
+            DrawPixcel = DrawPixcel32;
+        }
+        else
+        {
+            GetColor = GetColor16;
+            DrawPixcel = DrawPixcel16;
+        }
+
         // 汉字字体
         HzkStrc* cFont = GetMappedHzkFont(pFont);
 
@@ -334,19 +338,12 @@ namespace H3FontExtension
             }
         }
 
+        int cfontShift = startY + (pFont->height - cFont->Height) / 2.0;
+
         // 处理颜色代码
         nColorIdx = nColorIdx & 0x100 ? nColorIdx & 0xFE : nColorIdx + 9;
 
-        uint32_t defaultColor = 0u;
-        if (H3BitMode::Get() == 4)
-        {
-            defaultColor = pFont->palette.palette32->colors[nColorIdx].GetColor();
-        }
-        else
-        {
-            defaultColor = pFont->palette.color[nColorIdx].Value();
-        }
-
+        DWORD defaultColor = GetColor(pFont->palette, nColorIdx);
         DWORD textColor = defaultColor;
 
         int rowIdx = 0;
@@ -396,12 +393,6 @@ namespace H3FontExtension
                         {
                             textColor = TextColorMap[colorName].value_or(0u);
                         }
-
-                        if (H3BitMode::Get() != 4)
-                        {
-                            textColor = H3RGB565(textColor).Value();
-                        }
-
                         colorNameSubIndex = 0;
                     }
                     continue;
@@ -419,8 +410,7 @@ namespace H3FontExtension
                     // 传统颜色代码
                     if (currentChar == '{')
                     {
-                        textColor = H3BitMode::Get() == 4 ? pFont->palette.palette32->colors[nColorIdx + 1].GetColor()
-                                                          : pFont->palette.color[nColorIdx + 1].Value();
+                        textColor = GetColor(pFont->palette, nColorIdx + 1);
                     }
                     continue;
                 }
@@ -434,7 +424,8 @@ namespace H3FontExtension
                 if (currentChar > 160 && (i + 1) <= p.nStrLength)
                 {
                     DrawTextChar(pFont, cFont, pPcx, currentChar, p.pText[i + 1], nX + startX + posMove,
-                                 nY + startY + rowIdx * (std::max(pFont->height, cFont->Height) + cFont->MarginBottom),
+                                 nY + cfontShift +
+                                     rowIdx * (std::max(pFont->height, cFont->Height) + cFont->MarginBottom),
                                  textColor);
                     ++i;
                 }
@@ -604,45 +595,60 @@ namespace H3FontExtension
      */
     bool Init()
     {
+        MessageBoxW(H3Hwnd::Get(), L"注入成功", L"调试中", 0);
+
+        _P = GetPatcher();
+        _PI = _P->CreateInstance((char*)"HD.Plugin.H3FontExtension");
+
         // 加载配置
-        auto config = toml::parse_file("H3CN.toml");
-
-        toml::array fontArr = *config["Fonts"].as_array();
-
-        for (int i = 0; i < 9; ++i)
+        try
         {
-            const auto& font = fontArr[i].as_table();
-            HzkFont[i] = new HzkStrc(font->get("Name")->value_or(""), font->get("HzkFont")->value_or(""),
-                                     font->get("Height")->value_or(0), font->get("Width")->value_or(0),
-                                     font->get("MarginLeft")->value_or(0), font->get("MarginRight")->value_or(0),
-                                     font->get("MarginBottom")->value_or(2), font->get("DrawShadow")->value_or(true));
+            auto config = toml::parse_file("H3CN.toml");
+
+            toml::array fontArr = *config["Fonts"].as_array();
+
+            for (int i = 0; i < 9; ++i)
+            {
+                const auto& font = fontArr[i].as_table();
+                HzkFont[i] =
+                    new HzkStrc(font->get("Name")->value_or(""), font->get("HzkFont")->value_or(""),
+                                font->get("Height")->value_or(0), font->get("Width")->value_or(0),
+                                font->get("MarginLeft")->value_or(0), font->get("MarginRight")->value_or(0),
+                                font->get("MarginBottom")->value_or(2), font->get("DrawShadow")->value_or(true));
+            }
+
+            Cmpt_TextColor = config["General"]["TextColor"].value_or(true);
+            if (Cmpt_TextColor)
+            {
+                auto configColor = toml::parse_file("H3CN.TextColor.toml");
+                TextColorMap = *configColor["TextColor"].as_table();
+            }
+
+            // 文本框配置
+            MaxWordWidth = config["MessageBox"]["MaxWordWidth"].value_or(-1);
+            if (MaxWordWidth == -1)
+            {
+                MaxWordWidth = H3GameWidth::Get() / 2 - 32 * 2;
+            }
+            MaxLineWidth = config["MessageBox"]["MaxLineWidth"].value_or(-1);
+            if (MaxLineWidth == -1)
+            {
+                MaxLineWidth = H3GameWidth::Get() / 2 - 32 * 2;
+            }
         }
-
-        Cmpt_TextColor = config["General"]["TextColor"].value_or(true);
-        if (Cmpt_TextColor)
+        catch (const std::exception&)
         {
-            auto configColor = toml::parse_file("H3CN.TextColor.toml");
-            TextColorMap = *configColor["TextColor"].as_table();
-        }
-
-        // 文本框配置
-        MaxWordWidth = config["MessageBox"]["MaxWordWidth"].value_or(-1);
-        if (MaxWordWidth == -1)
-        {
-            MaxWordWidth = H3GameWidth::Get() / 2 - 32 * 2;
-        }
-        MaxLineWidth = config["MessageBox"]["MaxLineWidth"].value_or(-1);
-        if (MaxLineWidth == -1)
-        {
-            MaxLineWidth = H3GameWidth::Get() / 2 - 32 * 2;
+            MessageBoxW(H3Hwnd::Get(), L"配置文件加载失败", L"错误", 0);
         }
 
         // 注入函数劫持
-        H3Patcher::NakedHook5(0x4B51F0, (H3NakedFunction)TextDraw);
-        H3Patcher::NakedHook5(0x4B5580, (H3NakedFunction)GetLinesCountInText);
-        H3Patcher::NakedHook5(0x4B56F0, (H3NakedFunction)GetMaxLineWidth);
-        H3Patcher::NakedHook5(0x4B5770, (H3NakedFunction)GetMaxWordWidth);
-        H3Patcher::NakedHook5(0x4B58F0, (H3NakedFunction)SplitTextIntoLines);
+        _PI->CreateJmpPatch(0x4B51F0, (DWORD)TextDraw);
+        _PI->CreateJmpPatch(0x4B5580, (DWORD)GetLinesCountInText);
+        _PI->CreateJmpPatch(0x4B56F0, (DWORD)GetMaxLineWidth);
+        _PI->CreateJmpPatch(0x4B5770, (DWORD)GetMaxWordWidth);
+        _PI->CreateJmpPatch(0x4B58F0, (DWORD)SplitTextIntoLines);
+
+        _PI->ApplyAll();
 
         return true;
     }

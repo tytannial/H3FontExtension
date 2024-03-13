@@ -14,14 +14,16 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         return FALSE;
     }
 
-    switch (ul_reason_for_call)
+    static bool plugin_On = false;
+
+    if (DLL_PROCESS_ATTACH == ul_reason_for_call)
     {
-    case DLL_PROCESS_ATTACH:
-        return H3FontExtension::Init();
-    case DLL_THREAD_ATTACH:
-    case DLL_THREAD_DETACH:
-    case DLL_PROCESS_DETACH:
-        break;
+        if (!plugin_On)
+        {
+            plugin_On = true;
+            H3FontExtension::Init();
+        }
     }
+
     return TRUE;
 }

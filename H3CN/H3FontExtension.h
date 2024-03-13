@@ -4,13 +4,17 @@
 #include <ranges>
 #include <vector>
 
+#define _H3API_PATCHER_X86_
+
 #include <H3API.hpp>
 #include <toml.hpp>
 
+static Patcher* _P;
+static PatcherInstance* _PI;
+
 namespace H3FontExtension
 {
-    const uint32_t ShadowColor32 = 0xFF000000;
-    const uint16_t ShadowColor16 = 0x0000;
+    const uint16_t ShadowColor = 0;
 
     static bool Cmpt_TextColor = true;
     static toml::table TextColorMap;
@@ -59,14 +63,15 @@ namespace H3FontExtension
                                     int nMarginRight, int nMarginBottom, bool bDrawShadow)
         {
             std::ifstream file(lpFileName, std::ios::in | std::ios::binary);
-            file.seekg(0, std::ios::end);
-            std::streampos fileSize = file.tellg();
 
-            if (fileSize == 0)
+            if (file.good() == false)
             {
-                MessageBoxA(h3::H3Hwnd::Get(), "Init Font Error", "HeroesIII", 0);
+                MessageBoxW(h3::H3Hwnd::Get(), L"初始化字体失败", L"错误", 0);
                 return false;
             }
+
+            file.seekg(0, std::ios::end);
+            std::streampos fileSize = file.tellg();
 
             this->DrawShadow = bDrawShadow;
             this->MarginRight = nMarginRight;
@@ -75,10 +80,10 @@ namespace H3FontExtension
             this->Width = nWidth;
             this->Height = nHeight;
             this->ASCIIFontName = std::string(lpASCIIFontName);
-            this->FontFileBuffer = new uint8_t[fileSize];
+            this->FontFileBuffer = new UINT8[fileSize];
 
             file.seekg(0, std::ios::beg);
-            file.read(reinterpret_cast<std::ifstream::char_type*>(this->FontFileBuffer), fileSize);
+            file.read((char*)this->FontFileBuffer, fileSize);
 
             return false;
         }
@@ -89,7 +94,7 @@ namespace H3FontExtension
          * @param position 位码
          * @return 汉字库字符指针
          */
-        inline PUINT8 __fastcall GetHzkCharacterPcxPointer(uint8_t section, uint8_t position)
+        inline PUINT8 __fastcall GetHzkCharacterPcxPointer(UINT8 section, UINT8 position)
         {
             // GB2312
             // return this->FontFileBuffer + this->Width * ((this->Height + 7) >> 3) * (0x5E * (section - 0xA1) +
@@ -100,7 +105,7 @@ namespace H3FontExtension
         }
     };
 
-    //汉字字体全局变量
+    // 汉字字体全局变量
     static HzkStrc* HzkFont[9];
 
     static std::map<h3::H3Font*, HzkStrc*> FontMap;
