@@ -595,7 +595,9 @@ namespace H3FontExtension
      */
     bool Init()
     {
+#ifndef NDEBUG
         MessageBoxW(H3Hwnd::Get(), L"注入成功", L"调试中", 0);
+#endif
 
         _P = GetPatcher();
         _PI = _P->CreateInstance((char*)"HD.Plugin.H3FontExtension");
