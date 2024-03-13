@@ -10,7 +10,7 @@ namespace H3FontExtension
      * @param pFont 英文字体
      * @return 汉字字库字体
      */
-    HzkStrc* __fastcall GetMappedHzkFont(H3Font* pFont)
+    ExtFont* __fastcall GetMappedHzkFont(H3Font* pFont)
     {
         auto bHzkFontExisted = FontMap.contains(pFont);
         if (bHzkFontExisted)
@@ -20,14 +20,14 @@ namespace H3FontExtension
 
         for (size_t i = 0; i < 9; i++)
         {
-            if (!_stricmp(HzkFont[i]->ASCIIFontName.c_str(), pFont->GetName()))
+            if (!_stricmp(g_ExtFontTable[i]->ASCIIFontName.c_str(), pFont->GetName()))
             {
-                FontMap[pFont] = HzkFont[i];
-                return HzkFont[i];
+                FontMap[pFont] = g_ExtFontTable[i];
+                return g_ExtFontTable[i];
             }
         }
 
-        return HzkFont[1];
+        return g_ExtFontTable[1];
     }
 
     DWORD __fastcall GetColor16(const H3BasePalette565& palette, int colorIdx)
@@ -68,7 +68,7 @@ namespace H3FontExtension
      * @param nShadowColor 阴影RGB颜色码
      * @return
      */
-    bool __fastcall DrawTextChar(H3Font* pFont, HzkStrc* cFont, H3LoadedPcx16* pOutputPcx, uint8_t nCode1,
+    bool __fastcall DrawTextChar(H3Font* pFont, ExtFont* cFont, H3LoadedPcx16* pOutputPcx, uint8_t nCode1,
                                  uint8_t nCode2, int nX, int nY, DWORD nFontColor)
     {
         // 绘制英文文字
@@ -141,12 +141,11 @@ namespace H3FontExtension
      * @param nChar 字符代码
      * @return
      */
-    int __fastcall GetFontCharWidth(H3Font* pFont, HzkStrc* cFont, uint8_t nChar)
+    int __fastcall GetFontCharWidth(H3Font* pFont, ExtFont* cFont, uint8_t nChar)
     {
         if (nChar < 160)
         {
-            auto CharWidth = pFont->width[nChar];
-            return CharWidth.leftMargin + CharWidth.span + CharWidth.rightMargin;
+            return pFont->width[nChar].leftMargin + pFont->width[nChar].span + pFont->width[nChar].rightMargin;
         }
         else
         {
@@ -164,8 +163,8 @@ namespace H3FontExtension
      * @param textLines H3文本行
      * @return 总行数
      */
-    int __fastcall GetSplitTextLinesInfo(H3Font* pFont, HzkStrc* cFont, LPCSTR pStr, int nWidth,
-                                         vector<TextLineStruct>* textLines, H3Vector<H3String>* stringVector)
+    int __fastcall SplitTextToLines(H3Font* pFont, ExtFont* cFont, LPCSTR pStr, int nWidth,
+                                    vector<TextLineStruct>* textLines, H3Vector<H3String>* stringVector)
     {
         string_view text = pStr;
         auto sections = text | std::views::split('\n') |
@@ -304,10 +303,10 @@ namespace H3FontExtension
         }
 
         // 汉字字体
-        HzkStrc* cFont = GetMappedHzkFont(pFont);
+        ExtFont* cFont = GetMappedHzkFont(pFont);
 
         vector<TextLineStruct> textLines;
-        GetSplitTextLinesInfo(pFont, cFont, pStr, nWidth, &textLines, nullptr);
+        SplitTextToLines(pFont, cFont, pStr, nWidth, &textLines, nullptr);
 
         int startY = 0;
         // 垂直居中对齐
@@ -464,38 +463,36 @@ namespace H3FontExtension
         }
 
         // 汉字字体
-        HzkStrc* cFont = GetMappedHzkFont(pFont);
-        int lineCount = GetSplitTextLinesInfo(pFont, cFont, pStr, nWidth, nullptr, nullptr);
+        ExtFont* cFont = GetMappedHzkFont(pFont);
+        int lineCount = SplitTextToLines(pFont, cFont, pStr, nWidth, nullptr, nullptr);
         return lineCount;
     }
 
     /**
-     * @brief 按照拆分字符拆分文本获取最大宽度
+     * @brief 获取文本行最大宽度 H3Complete: 0x4B56F0
      * @param pFont ASCII字体
+     * @param EDX 寄存器参数占位
      * @param pStr 文本字符串
-     * @param pSpliters 分隔符数组
      * @return
      */
-    int __fastcall GetSplitWidth(H3Font* pFont, PUINT8 pStr, LPCSTR pSpliters)
+    int __fastcall GetMaxLineWidth(H3Font* pFont, uint32_t EDX, PUINT8 pStr)
     {
         // 汉字字体
-        HzkStrc* cFont = GetMappedHzkFont(pFont);
+        ExtFont* cFont = GetMappedHzkFont(pFont);
 
         // 行首换行符
         while (*pStr == '\n')
             ++pStr;
 
         bool ignoreWidth = false;
-        int maxLineWidth = 0;
+        int maxLineWidth = cFont->Width;
         int curLineWidth = 0;
+
         for (uint8_t code = *pStr; code; code = *++pStr)
         {
-            if (strrchr(pSpliters, code)) // 换行符强制重置行宽
+            if (code == '\n') // 换行符强制重置行宽
             {
-                if (curLineWidth > maxLineWidth)
-                {
-                    maxLineWidth = curLineWidth;
-                }
+                maxLineWidth = max(curLineWidth, maxLineWidth);
                 curLineWidth = 0;
                 continue;
             }
@@ -522,30 +519,13 @@ namespace H3FontExtension
             curLineWidth += GetFontCharWidth(pFont, cFont, *pStr);
             if (code > 160) // 汉字占用双字节
             {
-                ++curLineWidth;
                 ++pStr;
             }
         }
 
-        if (curLineWidth > maxLineWidth)
-        {
-            maxLineWidth = curLineWidth;
-        }
+        maxLineWidth = max(curLineWidth, maxLineWidth);
 
-        return min(maxLineWidth, MaxLineWidth);
-    }
-
-    /**
-     * @brief 获取文本行最大宽度 H3Complete: 0x4B56F0
-     * @param pFont ASCII字体
-     * @param EDX 寄存器参数占位
-     * @param pStr 文本字符串
-     * @return
-     */
-    int __fastcall GetMaxLineWidth(H3Font* pFont, uint32_t EDX, PUINT8 pStr)
-    {
-        const char spliter[] = {'\n', '\0'};
-        return GetSplitWidth(pFont, pStr, spliter);
+        return clamp(maxLineWidth, MinLineWidth, MaxLineWidth);
     }
 
     /**
@@ -558,7 +538,58 @@ namespace H3FontExtension
     int __fastcall GetMaxWordWidth(H3Font* pFont, uint32_t EDX, PUINT8 pStr)
     {
         const char spliter[] = {'\n', ' ', '\0'};
-        return GetSplitWidth(pFont, pStr, spliter);
+
+        // 汉字字体
+        ExtFont* cFont = GetMappedHzkFont(pFont);
+
+        // 行首换行符
+        while (*pStr == '\n')
+            ++pStr;
+
+        bool ignoreWidth = false;
+        int maxLineWidth = cFont->Width;
+        int curLineWidth = 0;
+
+        for (uint8_t code = *pStr; code; code = *++pStr)
+        {
+            if (strrchr(spliter, code)) // 换行符强制重置行宽
+            {
+                maxLineWidth = max(curLineWidth, maxLineWidth);
+                curLineWidth = 0;
+                continue;
+            }
+
+            if (code > 160) // 汉字占用双字节
+            {
+                ++pStr;
+                maxLineWidth = max(curLineWidth, maxLineWidth);
+                curLineWidth = 0;
+                continue;
+            }
+
+            if (code == '}')
+            {
+                ignoreWidth = false;
+                continue;
+            }
+            if (ignoreWidth)
+            {
+                continue;
+            }
+            if (code == '{' && *(pStr + 1) == '~')
+            {
+                ignoreWidth = true;
+                continue;
+            }
+            if (code == '{')
+            {
+                continue;
+            }
+
+            curLineWidth += GetFontCharWidth(pFont, cFont, *pStr);
+        }
+
+        return max(curLineWidth, maxLineWidth);
     }
 
     /**
@@ -585,8 +616,8 @@ namespace H3FontExtension
          */
 
         // 汉字字体
-        HzkStrc* cFont = GetMappedHzkFont(pFont);
-        GetSplitTextLinesInfo(pFont, cFont, pStr, nWidth, nullptr, &stringVector);
+        ExtFont* cFont = GetMappedHzkFont(pFont);
+        SplitTextToLines(pFont, cFont, pStr, nWidth, nullptr, &stringVector);
     }
 
     /**
@@ -612,8 +643,8 @@ namespace H3FontExtension
             for (int i = 0; i < 9; ++i)
             {
                 const auto& font = fontArr[i].as_table();
-                HzkFont[i] =
-                    new HzkStrc(font->get("Name")->value_or(""), font->get("HzkFont")->value_or(""),
+                g_ExtFontTable[i] =
+                    new ExtFont(font->get("Name")->value_or(""), font->get("HzkFont")->value_or(""),
                                 font->get("Height")->value_or(0), font->get("Width")->value_or(0),
                                 font->get("MarginLeft")->value_or(0), font->get("MarginRight")->value_or(0),
                                 font->get("MarginBottom")->value_or(2), font->get("DrawShadow")->value_or(true));
@@ -626,12 +657,8 @@ namespace H3FontExtension
                 TextColorMap = *configColor["TextColor"].as_table();
             }
 
-            // 文本框配置
-            MaxWordWidth = config["MessageBox"]["MaxWordWidth"].value_or(-1);
-            if (MaxWordWidth == -1)
-            {
-                MaxWordWidth = H3GameWidth::Get() / 2 - 32 * 2;
-            }
+            // 文本行宽计算规则限制
+            MinLineWidth = config["MessageBox"]["MinLineWidth"].value_or(256);
             MaxLineWidth = config["MessageBox"]["MaxLineWidth"].value_or(-1);
             if (MaxLineWidth == -1)
             {
@@ -647,6 +674,7 @@ namespace H3FontExtension
         _PI->CreateJmpPatch(0x4B51F0, (DWORD)TextDraw);
         _PI->CreateJmpPatch(0x4B5580, (DWORD)GetLinesCountInText);
         _PI->CreateJmpPatch(0x4B56F0, (DWORD)GetMaxLineWidth);
+        _PI->CreateJmpPatch(0x4B57E0, (DWORD)GetMaxLineWidth);
         _PI->CreateJmpPatch(0x4B5770, (DWORD)GetMaxWordWidth);
         _PI->CreateJmpPatch(0x4B58F0, (DWORD)SplitTextIntoLines);
 

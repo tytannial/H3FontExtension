@@ -5,10 +5,10 @@
 [General]
 TextColor = true # 兼容SoD_SP的彩色字体插件
 
-# 弹出框宽度限制，-1为自动宽度，游戏宽度的一半（不推荐使用自动宽度）
+# 如果没特殊需要不需要动这块
 [MessageBox]
-MaxWordWidth = 400 # 最大词宽度
-MaxLineWidth = 400 # 最大行宽度
+MinLineWidth = 0    # 最小行宽度
+MaxLineWidth = 400  # 最大行宽度
 
 # 字体映射定义
 # Name: H3字体名称（切勿修改）

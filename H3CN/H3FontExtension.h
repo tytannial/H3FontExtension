@@ -19,7 +19,7 @@ namespace H3FontExtension
     static bool Cmpt_TextColor = true;
     static toml::table TextColorMap;
 
-    static int MaxWordWidth = 400;
+    static int MinLineWidth = 400;
     static int MaxLineWidth = 400;
 
     struct TextLineStruct
@@ -29,7 +29,7 @@ namespace H3FontExtension
         int nWidth;
     };
 
-    struct HzkStrc
+    struct ExtFont
     {
     public:
         std::string ASCIIFontName;
@@ -41,11 +41,11 @@ namespace H3FontExtension
         int MarginBottom = 0;
         bool DrawShadow = true;
 
-        HzkStrc()
+        ExtFont()
         {
         }
 
-        HzkStrc(LPCSTR lpASCIIFontName, LPCSTR lpFileName, int nHeight, int nWidth, int nMarginLeft, int nMarginRight,
+        ExtFont(LPCSTR lpASCIIFontName, LPCSTR lpFileName, int nHeight, int nWidth, int nMarginLeft, int nMarginRight,
                 int nMarginBottom, bool bDrawShadow)
         {
             LoadHzhFont(lpASCIIFontName, lpFileName, nHeight, nWidth, nMarginLeft, nMarginRight, nMarginBottom,
@@ -106,9 +106,9 @@ namespace H3FontExtension
     };
 
     // 汉字字体全局变量
-    static HzkStrc* HzkFont[9];
+    static ExtFont* g_ExtFontTable[9];
 
-    static std::map<h3::H3Font*, HzkStrc*> FontMap;
+    static std::map<h3::H3Font*, ExtFont*> FontMap;
 
     bool Init();
 } // namespace H3FontExtension
