@@ -10,10 +10,10 @@ namespace H3FontExtension
      * @param pFont 英文字体
      * @return 汉字字库字体
      */
-    ExtFont* __fastcall GetMappedHzkFont(H3Font* pFont)
+    ExtFont* __fastcall GetMappedExtFont(H3Font* pFont)
     {
-        auto bHzkFontExisted = FontMap.contains(pFont);
-        if (bHzkFontExisted)
+        auto bExtFontExisted = FontMap.contains(pFont);
+        if (bExtFontExisted)
         {
             return FontMap[pFont];
         }
@@ -303,7 +303,7 @@ namespace H3FontExtension
         }
 
         // 汉字字体
-        ExtFont* cFont = GetMappedHzkFont(pFont);
+        ExtFont* cFont = GetMappedExtFont(pFont);
 
         vector<TextLineStruct> textLines;
         SplitTextToLines(pFont, cFont, pStr, nWidth, &textLines, nullptr);
@@ -463,7 +463,7 @@ namespace H3FontExtension
         }
 
         // 汉字字体
-        ExtFont* cFont = GetMappedHzkFont(pFont);
+        ExtFont* cFont = GetMappedExtFont(pFont);
         int lineCount = SplitTextToLines(pFont, cFont, pStr, nWidth, nullptr, nullptr);
         return lineCount;
     }
@@ -478,7 +478,7 @@ namespace H3FontExtension
     int __fastcall GetMaxLineWidth(H3Font* pFont, uint32_t EDX, PUINT8 pStr)
     {
         // 汉字字体
-        ExtFont* cFont = GetMappedHzkFont(pFont);
+        ExtFont* cFont = GetMappedExtFont(pFont);
 
         // 行首换行符
         while (*pStr == '\n')
@@ -540,7 +540,7 @@ namespace H3FontExtension
         const char spliter[] = {'\n', ' ', '\0'};
 
         // 汉字字体
-        ExtFont* cFont = GetMappedHzkFont(pFont);
+        ExtFont* cFont = GetMappedExtFont(pFont);
 
         // 行首换行符
         while (*pStr == '\n')
@@ -616,7 +616,7 @@ namespace H3FontExtension
          */
 
         // 汉字字体
-        ExtFont* cFont = GetMappedHzkFont(pFont);
+        ExtFont* cFont = GetMappedExtFont(pFont);
         SplitTextToLines(pFont, cFont, pStr, nWidth, nullptr, &stringVector);
     }
 
@@ -644,7 +644,7 @@ namespace H3FontExtension
             {
                 const auto& font = fontArr[i].as_table();
                 g_ExtFontTable[i] =
-                    new ExtFont(font->get("Name")->value_or(""), font->get("HzkFont")->value_or(""),
+                    new ExtFont(font->get("Name")->value_or(""), font->get("ExtFont")->value_or(""),
                                 font->get("Height")->value_or(0), font->get("Width")->value_or(0),
                                 font->get("MarginLeft")->value_or(0), font->get("MarginRight")->value_or(0),
                                 font->get("MarginBottom")->value_or(2), font->get("DrawShadow")->value_or(true));
@@ -672,10 +672,10 @@ namespace H3FontExtension
 
         // 注入函数劫持
         _PI->CreateJmpPatch(0x4B51F0, (DWORD)TextDraw);
-        _PI->CreateJmpPatch(0x4B5580, (DWORD)GetLinesCountInText);
-        _PI->CreateJmpPatch(0x4B56F0, (DWORD)GetMaxLineWidth);
-        _PI->CreateJmpPatch(0x4B57E0, (DWORD)GetMaxLineWidth);
-        _PI->CreateJmpPatch(0x4B5770, (DWORD)GetMaxWordWidth);
+        _PI->CreateJmpPatch(0x4B5580, (DWORD)GetLinesCountInText); // 计算行数
+        _PI->CreateJmpPatch(0x4B56F0, (DWORD)GetMaxLineWidth);     // 最长文本行长度
+        _PI->CreateJmpPatch(0x4B5770, (DWORD)GetMaxWordWidth);     // 最长单词长度
+        _PI->CreateJmpPatch(0x4B57E0, (DWORD)GetMaxLineWidth);     // 最长换行长度
         _PI->CreateJmpPatch(0x4B58F0, (DWORD)SplitTextIntoLines);
 
         _PI->ApplyAll();
