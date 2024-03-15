@@ -270,7 +270,6 @@ namespace H3FontExtension
     /**
      * @brief 绘制文字 H3中文: 0x4077D4 0x532BC0
      * @param pFont ASCII字体
-     * @param EDX 寄存器参数占位
      * @param pStr 文本字符串
      * @param pPcx 图像输出
      * @param nX 绘制字符位置左上角X坐标
@@ -282,8 +281,8 @@ namespace H3FontExtension
      * @param nFontStyle 字体风格（无用）
      * @return
      */
-    void __fastcall TextDraw(H3Font* pFont, uint32_t EDX, LPCSTR pStr, H3LoadedPcx16* pPcx, int nX, int nY, int nWidth,
-                             int nHeight, uint32_t nColorIdx, uint32_t nAlignFlags, int nFontStyle)
+    void __stdcall TextDraw(HiHook* h, H3Font* pFont, LPCSTR pStr, H3LoadedPcx16* pPcx, int nX, int nY, int nWidth,
+                            int nHeight, uint32_t nColorIdx, uint32_t nAlignFlags, int nFontStyle)
     {
         if (nWidth == 0)
         {
@@ -450,12 +449,11 @@ namespace H3FontExtension
     /**
      * @brief 计算文本行数 H3Complete: 0x4B5580
      * @param pFont ASCII字体
-     * @param EDX 寄存器参数占位
      * @param pStr 文本字符串
      * @param nWidth 文本框宽度
      * @return
      */
-    int __fastcall GetLinesCountInText(H3Font* pFont, uint32_t EDX, LPCSTR pStr, int nWidth)
+    int __stdcall GetLinesCountInText(HiHook* h, H3Font* pFont, LPCSTR pStr, int nWidth)
     {
         if (nWidth == 0)
         {
@@ -471,11 +469,10 @@ namespace H3FontExtension
     /**
      * @brief 获取文本行最大宽度 H3Complete: 0x4B56F0
      * @param pFont ASCII字体
-     * @param EDX 寄存器参数占位
      * @param pStr 文本字符串
      * @return
      */
-    int __fastcall GetMaxLineWidth(H3Font* pFont, uint32_t EDX, PUINT8 pStr)
+    int __stdcall GetMaxLineWidth(HiHook* h, H3Font* pFont, PUINT8 pStr)
     {
         // 汉字字体
         ExtFont* cFont = GetMappedExtFont(pFont);
@@ -531,16 +528,15 @@ namespace H3FontExtension
     /**
      * @brief 获取文本单词最大宽度 H3Complete: 0x4B5770
      * @param pFont ASCII字体
-     * @param EDX 寄存器参数占位
      * @param pStr 文本字符串
      * @return
      */
-    int __fastcall GetMaxWordWidth(H3Font* pFont, uint32_t EDX, PUINT8 pStr)
+    int __stdcall GetMaxWordWidth(HiHook* h, H3Font* _this, PUINT8 pStr)
     {
         const char spliter[] = {'\n', ' ', '\0'};
 
         // 汉字字体
-        ExtFont* cFont = GetMappedExtFont(pFont);
+        ExtFont* cFont = GetMappedExtFont(_this);
 
         // 行首换行符
         while (*pStr == '\n')
@@ -586,7 +582,7 @@ namespace H3FontExtension
                 continue;
             }
 
-            curLineWidth += GetFontCharWidth(pFont, cFont, *pStr);
+            curLineWidth += GetFontCharWidth(_this, cFont, *pStr);
         }
 
         return max(curLineWidth, maxLineWidth);
@@ -595,14 +591,13 @@ namespace H3FontExtension
     /**
      * @brief 拆分文本为行 H3Complete: 0x4B58F0
      * @param pFont ASCII字体
-     * @param EDX 寄存器参数占位
      * @param pStr 文本字符串
      * @param nWidth 文本框宽度
      * @param stringVector 拆分后的文本行容器
      * @return
      */
-    void __fastcall SplitTextIntoLines(H3Font* pFont, uint32_t EDX, LPCSTR pStr, int nWidth,
-                                       H3Vector<H3String>& stringVector)
+    void __stdcall SplitTextIntoLines(HiHook* h, H3Font* pFont, LPCSTR pStr, int nWidth,
+                                      H3Vector<H3String>& stringVector)
     {
         if (nWidth == 0)
         {
@@ -631,7 +626,7 @@ namespace H3FontExtension
 #endif
 
         _P = GetPatcher();
-        _PI = _P->CreateInstance((char*)"HD.Plugin.H3FontExtension");
+        _PI = _P->CreateInstance("HD.Plugin.H3FontExtension");
 
         // 加载配置
         try
@@ -671,14 +666,12 @@ namespace H3FontExtension
         }
 
         // 注入函数劫持
-        _PI->CreateJmpPatch(0x4B51F0, (DWORD)TextDraw);
-        _PI->CreateJmpPatch(0x4B5580, (DWORD)GetLinesCountInText); // 计算行数
-        _PI->CreateJmpPatch(0x4B56F0, (DWORD)GetMaxLineWidth);     // 最长文本行长度
-        _PI->CreateJmpPatch(0x4B5770, (DWORD)GetMaxWordWidth);     // 最长单词长度
-        _PI->CreateJmpPatch(0x4B57E0, (DWORD)GetMaxLineWidth);     // 最长换行长度
-        _PI->CreateJmpPatch(0x4B58F0, (DWORD)SplitTextIntoLines);
-
-        _PI->ApplyAll();
+        _PI->WriteHiHook(0x4B51F0, SPLICE_, THISCALL_, TextDraw);
+        _PI->WriteHiHook(0x4B5580, SPLICE_, THISCALL_, GetLinesCountInText); // 计算文本的行数
+        _PI->WriteHiHook(0x4B56F0, SPLICE_, THISCALL_, GetMaxLineWidth);     // 最长文本行长度
+        _PI->WriteHiHook(0x4B5770, SPLICE_, THISCALL_, GetMaxWordWidth);     // 最长单词长度
+        _PI->WriteHiHook(0x4B57E0, SPLICE_, THISCALL_, GetMaxLineWidth);     // 最长换行长度
+        _PI->WriteHiHook(0x4B58F0, SPLICE_, THISCALL_, SplitTextIntoLines);
 
         return true;
     }
