@@ -447,148 +447,6 @@ namespace H3FontExtension
     }
 
     /**
-     * @brief 计算文本行数 H3Complete: 0x4B5580
-     * @param pFont ASCII字体
-     * @param pStr 文本字符串
-     * @param nWidth 文本框宽度
-     * @return
-     */
-    int __stdcall GetLinesCountInText(HiHook* h, H3Font* pFont, LPCSTR pStr, int nWidth)
-    {
-        if (nWidth == 0)
-        {
-            return 0;
-        }
-
-        // 汉字字体
-        ExtFont* cFont = GetMappedExtFont(pFont);
-        int lineCount = SplitTextToLines(pFont, cFont, pStr, nWidth, nullptr, nullptr);
-        return lineCount;
-    }
-
-    /**
-     * @brief 获取文本行最大宽度 H3Complete: 0x4B56F0
-     * @param pFont ASCII字体
-     * @param pStr 文本字符串
-     * @return
-     */
-    int __stdcall GetMaxLineWidth(HiHook* h, H3Font* pFont, PUINT8 pStr)
-    {
-        // 汉字字体
-        ExtFont* cFont = GetMappedExtFont(pFont);
-
-        // 行首换行符
-        while (*pStr == '\n')
-            ++pStr;
-
-        bool ignoreWidth = false;
-        int maxLineWidth = cFont->Width;
-        int curLineWidth = 0;
-
-        for (uint8_t code = *pStr; code; code = *++pStr)
-        {
-            if (code == '\n') // 换行符强制重置行宽
-            {
-                maxLineWidth = max(curLineWidth, maxLineWidth);
-                curLineWidth = 0;
-                continue;
-            }
-
-            if (code == '}')
-            {
-                ignoreWidth = false;
-                continue;
-            }
-            if (ignoreWidth)
-            {
-                continue;
-            }
-            if (code == '{' && *(pStr + 1) == '~')
-            {
-                ignoreWidth = true;
-                continue;
-            }
-            if (code == '{')
-            {
-                continue;
-            }
-
-            curLineWidth += GetFontCharWidth(pFont, cFont, *pStr);
-            if (code > 160) // 汉字占用双字节
-            {
-                ++pStr;
-            }
-        }
-
-        maxLineWidth = max(curLineWidth, maxLineWidth);
-
-        return clamp(maxLineWidth, MinLineWidth, MaxLineWidth);
-    }
-
-    /**
-     * @brief 获取文本单词最大宽度 H3Complete: 0x4B5770
-     * @param pFont ASCII字体
-     * @param pStr 文本字符串
-     * @return
-     */
-    int __stdcall GetMaxWordWidth(HiHook* h, H3Font* _this, PUINT8 pStr)
-    {
-        const char spliter[] = {'\n', ' ', '\0'};
-
-        // 汉字字体
-        ExtFont* cFont = GetMappedExtFont(_this);
-
-        // 行首换行符
-        while (*pStr == '\n')
-            ++pStr;
-
-        bool ignoreWidth = false;
-        int maxLineWidth = cFont->Width;
-        int curLineWidth = 0;
-
-        for (uint8_t code = *pStr; code; code = *++pStr)
-        {
-            if (strrchr(spliter, code)) // 换行符强制重置行宽
-            {
-                maxLineWidth = max(curLineWidth, maxLineWidth);
-                curLineWidth = 0;
-                continue;
-            }
-
-            if (code > 160) // 汉字占用双字节
-            {
-                ++pStr;
-                maxLineWidth = max(curLineWidth, maxLineWidth);
-                curLineWidth = 0;
-                continue;
-            }
-
-            if (code == '}')
-            {
-                ignoreWidth = false;
-                continue;
-            }
-            if (ignoreWidth)
-            {
-                continue;
-            }
-            if (code == '{' && *(pStr + 1) == '~')
-            {
-                ignoreWidth = true;
-                continue;
-            }
-            if (code == '{')
-            {
-                continue;
-            }
-
-            curLineWidth += GetFontCharWidth(_this, cFont, *pStr);
-        }
-
-        return max(curLineWidth, maxLineWidth);
-    }
-
-    /**
      * @brief 拆分文本为行 H3Complete: 0x4B58F0
      * @param pFont ASCII字体
      * @param pStr 文本字符串
@@ -613,6 +471,276 @@ namespace H3FontExtension
         // 汉字字体
         ExtFont* cFont = GetMappedExtFont(pFont);
         SplitTextToLines(pFont, cFont, pStr, nWidth, nullptr, &stringVector);
+    }
+
+    /**
+     * @brief 获取文本中最长单词
+     * @param h 函数钩
+     * @param pFont 字体
+     * @param szText 文本段
+     * @return 最长的一个词
+     */
+    int __stdcall GetWordWidth(HiHook* h, H3Font* pFont, char* szText)
+    {
+        ExtFont* cFont = GetMappedExtFont(pFont);
+
+        int strLength = strlen(szText);
+        int maxWidth = cFont->MarginLeft + cFont->Width + cFont->MarginRight;
+        int wordWidth = 0;
+        for (int i = 0; i < strLength; ++i)
+        {
+            UINT8 code = szText[i];
+            if (code == ' ' || code == '\n')
+            {
+                maxWidth = max(wordWidth, maxWidth);
+                wordWidth = 0;
+                continue;
+            }
+
+            if (code == '{' || code == '}')
+            {
+                continue;
+            }
+
+            // 单字节码
+            if (code < 0xA1 || code == 0xFF)
+            {
+                wordWidth += pFont->width[code].leftMargin + pFont->width[code].span + pFont->width[code].rightMargin;
+                continue;
+            }
+
+            // GBK范围0xA1 - OxFE，位码0x01-0xFE
+            UINT8 extCode = szText[i + 1];
+            if (extCode == '\0' || extCode == 0xFF) // GBK 0xFF位码为空
+            {
+                continue;
+            }
+
+            break;
+        }
+
+        return max(wordWidth, maxWidth);
+    }
+
+    /**
+     * @brief 获取指定宽度下一段话中最长句
+     * @param h
+     * @param pFont
+     * @param szText
+     * @param iBoxWidth
+     * @return
+     */
+    int __stdcall GetLineWrapWidth(HiHook* h, H3Font* pFont, char* szText, int iBoxWidth)
+    {
+        ExtFont* cFont = GetMappedExtFont(pFont);
+        int cFontWidth = cFont->MarginLeft + cFont->Width + cFont->MarginRight;
+
+        int strLength = strlen(szText);
+        if (strLength <= 0)
+            return 0;
+
+        int maxWidth = 0;
+        int lineWidth = 0; // 当前行行宽
+        int charWidth = 0; // 当前行字宽
+        int charSize = 0;  // 字符占用字节
+
+        // 遍历字符串
+        for (int i = 0; i < strLength; ++i)
+        {
+            // 当前文本代码
+            UINT8 code = szText[i];
+
+            // 结束符直接结束遍历
+            if (!code)
+            {
+                break;
+            }
+
+            // 换行符比较后记录最大行宽，重置当前行宽
+            if (code == '\n')
+            {
+                maxWidth = max(lineWidth, maxWidth);
+                lineWidth = 0;
+                continue;
+            }
+
+            // 颜色标记不记录行宽
+            if (code == '{' || code == '}')
+            {
+                continue;
+            }
+
+            charSize = 0;  // 字符字节数
+            charWidth = 0; // 重置字符宽度
+
+            // 单字节码
+            if (code < 0xA1 || code == 0xFF)
+            {
+                charWidth = pFont->width[code].leftMargin + pFont->width[code].span + pFont->width[code].rightMargin;
+                charSize = 1; // 单字节
+            }
+            else
+            {
+                // 获取位码
+                UINT8 extCode = szText[i + 1];
+                // GBK范围0xA1 - OxFE，位码0x01-0xFE
+                if (extCode != '\0' && extCode != 0xFF) // GBK 0xFF位码为空
+                {
+                    charWidth = cFontWidth;
+                    charSize = 2; // 双字节
+                    ++i;          // 双字节跳过高位字符
+                }
+            }
+
+            if (lineWidth + charWidth > iBoxWidth)
+            {
+                maxWidth = max(lineWidth, maxWidth); // 判断长度
+                lineWidth = 0;                       // 重置句长度
+                i -= charSize;                       // 超长则倒回去
+            }
+            else
+            {
+                lineWidth += charWidth;
+            }
+        }
+
+        return max(lineWidth, maxWidth);
+    }
+
+    /**
+     * @brief 获取一段话的行数
+     * @param h
+     * @param pFont
+     * @param szText
+     * @param iWidth
+     * @return
+     */
+    int __stdcall GetLineCount(HiHook* h, H3Font* pFont, char* szText, int iBoxWidth)
+    {
+        ExtFont* cFont = GetMappedExtFont(pFont);
+        int cFontWidth = cFont->MarginLeft + cFont->Width + cFont->MarginRight;
+
+        int strLength = strlen(szText);
+        if (strLength <= 0)
+            return 0;
+
+        int lineCount = 1; // 至少一行
+        int lineWidth = 0; // 当前行行宽
+        int charWidth = 0; // 当前行字宽
+        int charSize = 0;  // 字符占用字节
+
+        // 遍历字符串
+        for (int i = 0; i < strLength; ++i)
+        {
+            // 当前文本代码
+            UINT8 code = szText[i];
+
+            // 结束符直接结束遍历
+            if (!code)
+            {
+                break;
+            }
+
+            // 换行符比较后记录最大行宽，重置当前行宽
+            if (code == '\n')
+            {
+                ++lineCount;
+                lineWidth = 0;
+                continue;
+            }
+
+            // 颜色标记不记录行宽
+            if (code == '{' || code == '}')
+            {
+                continue;
+            }
+
+            charSize = 0;  // 字符字节数
+            charWidth = 0; // 重置字符宽度
+
+            // 单字节码
+            if (code < 0xA1 || code == 0xFF)
+            {
+                charWidth = pFont->width[code].leftMargin + pFont->width[code].span + pFont->width[code].rightMargin;
+                charSize = 1; // 单字节
+            }
+            else
+            {
+                // 获取位码
+                UINT8 extCode = szText[i + 1];
+                // GBK范围0xA1 - OxFE，位码0x01-0xFE
+                if (extCode != '\0' && extCode != 0xFF) // GBK 0xFF位码为空
+                {
+                    charWidth = cFontWidth;
+                    charSize = 2; // 双字节
+                    ++i;          // 双字节跳过高位字符
+                }
+            }
+
+            if (lineWidth + charWidth <= iBoxWidth)
+            {
+                lineWidth += charWidth;
+                continue;
+            }
+
+            ++lineCount;   // 行数+1
+            lineWidth = 0; // 重置句长度
+            i -= charSize; // 超长则倒回去
+        }
+
+        return lineCount;
+    }
+
+    /**
+     * @brief 获取一段话中最长的句子
+     * @param h
+     * @param pFont
+     * @param szText
+     * @return
+     */
+    int __stdcall GetLineWidth(HiHook* h, H3Font* pFont, char* szText)
+    {
+        ExtFont* cFont = GetMappedExtFont(pFont);
+
+        int strLength = strlen(szText);
+
+        int maxWidth = 0;
+        int lineWidth = 0;
+        for (int i = 0; i < strLength; ++i)
+        {
+            UINT8 code = szText[i];
+            if (code == '\n')
+            {
+                maxWidth = max(lineWidth, maxWidth);
+                lineWidth = 0;
+                continue;
+            }
+
+            if (code == '{' || code == '}')
+            {
+                continue;
+            }
+
+            // 单字节码
+            if (code < 0xA1 || code == 0xFF)
+            {
+                lineWidth += pFont->width[code].leftMargin + pFont->width[code].span + pFont->width[code].rightMargin;
+                continue;
+            }
+
+            // 获取位码
+            UINT8 extCode = szText[i + 1];
+            // GBK范围0xA1 - OxFE，位码0x01-0xFE
+            if (extCode == '\0' || extCode == 0xFF) // GBK 0xFF位码为空
+            {
+                continue;
+            }
+
+            lineWidth += cFont->MarginLeft + cFont->Width + cFont->MarginRight;
+            ++i;
+        }
+
+        return max(lineWidth, maxWidth);
     }
 
     /**
@@ -667,10 +795,10 @@ namespace H3FontExtension
 
         // 注入函数劫持
         _PI->WriteHiHook(0x4B51F0, SPLICE_, THISCALL_, TextDraw);
-        _PI->WriteHiHook(0x4B5580, SPLICE_, THISCALL_, GetLinesCountInText); // 计算文本的行数
-        _PI->WriteHiHook(0x4B56F0, SPLICE_, THISCALL_, GetMaxLineWidth);     // 最长文本行长度
-        _PI->WriteHiHook(0x4B5770, SPLICE_, THISCALL_, GetMaxWordWidth);     // 最长单词长度
-        _PI->WriteHiHook(0x4B57E0, SPLICE_, THISCALL_, GetMaxLineWidth);     // 最长换行长度
+        _PI->WriteHiHook(0x4B5580, SPLICE_, THISCALL_, GetLineCount);     // 计算文本的行数
+        _PI->WriteHiHook(0x4B56F0, SPLICE_, THISCALL_, GetLineWidth);     // 最长文本行长度
+        _PI->WriteHiHook(0x4B5770, SPLICE_, THISCALL_, GetWordWidth);     // 最长单词长度
+        _PI->WriteHiHook(0x4B57E0, SPLICE_, THISCALL_, GetLineWrapWidth); // 最长换行长度
         _PI->WriteHiHook(0x4B58F0, SPLICE_, THISCALL_, SplitTextIntoLines);
 
         return true;
