@@ -454,23 +454,134 @@ namespace H3FontExtension
      * @param stringVector 拆分后的文本行容器
      * @return
      */
-    void __stdcall SplitTextIntoLines(HiHook* h, H3Font* pFont, LPCSTR pStr, int nWidth,
+    void __stdcall SplitTextIntoLines(HiHook* h, H3Font* pFont, char* pStr, const int iBoxWidth,
                                       H3Vector<H3String>& stringVector)
     {
-        if (nWidth == 0)
+        if (iBoxWidth == 0 || !*pStr)
         {
             return;
         }
 
-        /*
-         * TODO:
-         * 颜色标记在前一行此时跨行，那么需要添加颜色标记在行首。
-         * 这个问题仅出现在使用H3容器提前拆分行的情况，需要特殊处理。
-         */
-
-        // 汉字字体
         ExtFont* cFont = GetMappedExtFont(pFont);
-        SplitTextToLines(pFont, cFont, pStr, nWidth, nullptr, &stringVector);
+        int spaceWidth = pFont->width[32].span + pFont->width[32].leftMargin + pFont->width[32].rightMargin;
+
+        int lineWidth = 0;
+        H3String strBuffer;
+
+        char* strCursor = pStr;
+        while (*strCursor)
+        {
+            // 行首空格和换行符处理
+            int blankWidth = 0;
+            int blankCount = 0;
+            for (UINT8 code = *strCursor; code == ' ' || code == '\n'; code = *++strCursor)
+            {
+                if (code == ' ')
+                {
+                    blankWidth += spaceWidth;
+                    ++blankCount;
+                    continue;
+                }
+
+                stringVector.Add(strBuffer);
+                strBuffer = H3String();
+                lineWidth = 0;
+                blankCount = 0;
+                blankWidth = 0;
+                ++strCursor; // 换行时额外移动一格光标
+            }
+
+            // 通过空格或换行符取词，一个汉字算作一个词
+            int wordWidth = 0;
+            char* wordCursor = strCursor;
+            for (UINT8 code = *wordCursor; *wordCursor != '\0'; code = *++wordCursor)
+            {
+                if (code == ' ' || code == '\n')
+                {
+                    break;
+                }
+
+                if (code > 160u && *(wordCursor + 1))
+                {
+                    wordWidth = cFont->GlyphWidth;
+                    wordCursor += 2;
+                    break;
+                }
+
+                // BUGFIX: 原版里词宽计算了颜色字符
+                if (code == '{' || code == '}')
+                {
+                    continue;
+                }
+
+                wordWidth += pFont->width[code].leftMargin + pFont->width[code].span + pFont->width[code].rightMargin;
+            };
+
+            // 当前的 句宽+取到的词宽+空白宽度 大于文本框宽度
+            if (lineWidth + wordWidth + blankWidth > iBoxWidth)
+            {
+                // 判断句宽进行换行
+                if (lineWidth > 0)
+                {
+                    stringVector.Add(strBuffer);
+                    strBuffer = H3String();
+                    lineWidth = 0;
+                }
+
+                blankCount = 0; // 移除行首空格
+                blankWidth = 0; // 重置空格宽度
+
+                // 如果取词的宽超过过了文本框的宽
+                // 强行断行，将词拆行显示直到词宽，
+                // 小于文本边框宽度
+                while (wordWidth > iBoxWidth)
+                {
+                    for (UINT8 code = *wordCursor; *wordCursor != '\0'; code = *++wordCursor)
+                    {
+                        if (code == ' ' || code == '\n')
+                        {
+                            break;
+                        }
+
+                        int charWidth =
+                            pFont->width[code].leftMargin + pFont->width[code].span + pFont->width[code].rightMargin;
+                        if (charWidth + lineWidth > iBoxWidth)
+                        {
+                            break;
+                        }
+
+                        strBuffer.Append(code);
+                        lineWidth += charWidth;
+                        wordWidth -= charWidth;
+                    };
+
+                    stringVector.Add(strBuffer);
+                    lineWidth = 0;
+                    strBuffer = H3String();
+                }
+            }
+
+            // 插入词前空格
+            strBuffer.Insert(blankCount, ' ');
+
+            // 将词填入句末
+            if (strCursor != wordCursor)
+            {
+                strBuffer.Append(strCursor, wordCursor - strCursor);
+                strCursor = wordCursor;
+            };
+
+            // 句宽增加词的宽度
+            lineWidth += wordWidth;
+            // 句宽增加空格宽度
+            lineWidth += blankWidth;
+        }
+
+        // 文本剩余单独成句
+        if (lineWidth > 0)
+        {
+            stringVector.Add(strBuffer);
+        }
     }
 
     /**

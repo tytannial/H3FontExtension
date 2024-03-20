@@ -39,6 +39,7 @@ namespace H3FontExtension
         int MarginLeft = 0;
         int MarginRight = 0;
         int MarginBottom = 0;
+        int GlyphWidth = 0;
         bool DrawShadow = true;
 
         ExtFont()
@@ -81,6 +82,8 @@ namespace H3FontExtension
             this->Height = nHeight;
             this->ASCIIFontName = std::string(lpASCIIFontName);
             this->FontFileBuffer = new UINT8[fileSize];
+
+            this->GlyphWidth = nMarginLeft + nWidth + nMarginRight;
 
             file.seekg(0, std::ios::beg);
             file.read((char*)this->FontFileBuffer, fileSize);
