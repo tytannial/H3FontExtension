@@ -463,18 +463,19 @@ namespace H3FontExtension
         }
 
         ExtFont* cFont = GetMappedExtFont(pFont);
+
+        //获取空格宽度
         int spaceWidth = pFont->width[32].span + pFont->width[32].leftMargin + pFont->width[32].rightMargin;
 
         int lineWidth = 0;
         H3String strBuffer;
 
-        char* strCursor = pStr;
-        while (*strCursor)
+        while (*pStr)
         {
             // 行首空格和换行符处理
             int blankWidth = 0;
             int blankCount = 0;
-            for (UINT8 code = *strCursor; code == ' ' || code == '\n'; code = *++strCursor)
+            for (UINT8 code = *pStr; code == ' ' || code == '\n'; code = *++pStr)
             {
                 if (code == ' ')
                 {
@@ -486,14 +487,14 @@ namespace H3FontExtension
                 stringVector.Add(strBuffer);
                 strBuffer = H3String();
                 lineWidth = 0;
-                blankCount = 0;
                 blankWidth = 0;
-                ++strCursor; // 换行时额外移动一格光标
+                blankCount = 0;
+                ++pStr; // 换行时额外移动一格光标
             }
 
             // 通过空格或换行符取词，一个汉字算作一个词
             int wordWidth = 0;
-            char* wordCursor = strCursor;
+            char* wordCursor = pStr;
             for (UINT8 code = *wordCursor; *wordCursor != '\0'; code = *++wordCursor)
             {
                 if (code == ' ' || code == '\n')
@@ -565,10 +566,10 @@ namespace H3FontExtension
             strBuffer.Insert(blankCount, ' ');
 
             // 将词填入句末
-            if (strCursor != wordCursor)
+            if (pStr != wordCursor)
             {
-                strBuffer.Append(strCursor, wordCursor - strCursor);
-                strCursor = wordCursor;
+                strBuffer.Append(pStr, wordCursor - pStr);
+                pStr = wordCursor;
             };
 
             // 句宽增加词的宽度
