@@ -3984,6 +3984,7 @@ namespace h3
 		_H3API_ H3String& Insert(UINT pos, LPCSTR msg);
 		_H3API_ H3String& Insert(UINT pos, const H3String& to_insert);
 		_H3API_ H3String& Insert(UINT pos, CHAR ch);
+        _H3API_ H3String& Insert(int count, CHAR ch);
 
 		_H3API_ INT Compare(LPCSTR other) const;
 		_H3API_ INT Compare(const H3String& other) const;
@@ -25880,6 +25881,10 @@ namespace h3
 	_H3API_ H3String& H3String::Insert(UINT pos, CHAR ch)
 	{
 		return Insert(pos, &ch, 1);
+	}
+	_H3API_ H3String& H3String::Insert(int count, CHAR ch)
+	{
+		return THISCALL_3(H3String&, 0x4B5CA0, this, count, ch);
 	}
 	_H3API_ INT H3String::Compare(LPCSTR other) const
 	{
