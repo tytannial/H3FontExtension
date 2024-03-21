@@ -32,7 +32,7 @@ namespace H3FontExtension
 
     DWORD __fastcall GetColor16(const H3BasePalette565& palette, int colorIdx)
     {
-        return palette.color[colorIdx].GetRGB888();
+        return palette.color[colorIdx].Value();
     }
 
     DWORD __fastcall GetColor32(const H3BasePalette565& palette, int colorIdx)
