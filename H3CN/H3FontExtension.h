@@ -24,9 +24,9 @@ namespace H3FontExtension
 
     struct TextLineStruct
     {
-        std::string_view pText;
-        int nStrLength;
-        int nWidth;
+        h3::H3String pText;
+        UINT iLength;
+        int iWidth;
     };
 
     struct ExtFont
