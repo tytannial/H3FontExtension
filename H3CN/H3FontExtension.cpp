@@ -389,7 +389,7 @@ namespace H3FontExtension
                 {
                     H3Font_DrawChar(pFont, cFont, pPcx, code, extCode, iX + startX + posMove,
                                     iY + startY + cfontShift + rowIdx * cfontHeight, textColor);
-                    posMove += cFont->Width;
+                    posMove += cFont->GlyphWidth;
                     ++i;
                 }
                 else
