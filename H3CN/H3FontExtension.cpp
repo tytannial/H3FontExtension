@@ -55,105 +55,6 @@ namespace H3FontExtension
     void(__fastcall* DrawPixcel)(const PUINT8 rowBuffer, int col, DWORD color);
 
     /**
-     * @brief 绘制文字 H3中文: 0x532230 0x40C5B3
-     * @tparam T 彩色模式类型 仅支持 16位色、32位色
-     * @param pFont ASCII字体
-     * @param cFont 扩展字体
-     * @param pOutputPcx 图像输出
-     * @param nCode1 字符编码高位
-     * @param nCode2 字符编码低位
-     * @param nX 绘制位置左上角X坐标
-     * @param nY 绘制位置左上角Y坐标
-     * @param nFontColor RGB颜色码
-     * @param nShadowColor 阴影RGB颜色码
-     * @return
-     */
-    bool __fastcall DrawTextChar(H3Font* pFont, ExtFont* cFont, H3LoadedPcx16* pOutputPcx, uint8_t nCode1,
-                                 uint8_t nCode2, int nX, int nY, DWORD nFontColor)
-    {
-        // 绘制英文文字
-        if (nCode2 == 0)
-        {
-            PUINT8 pFontBuffer = pFont->GetChar(nCode1);
-            int startX = nX + pFont->width[nCode1].leftMargin;
-            int startY = nY;
-            for (int nRow = 0; nRow < pFont->height; ++nRow)
-            {
-                for (int nColumn = 0; nColumn < pFont->width[nCode1].span; ++nColumn)
-                {
-                    uint8_t nPixcel = *pFontBuffer++;
-                    if (!nPixcel)
-                    {
-                        continue;
-                    }
-
-                    // 255表示绘制正常颜色，否则则绘制阴影
-                    if (nPixcel == 255)
-                    {
-                        DrawPixcel(pOutputPcx->GetRow(startY + nRow), startX + nColumn, nFontColor);
-                    }
-                    else
-                    {
-                        DrawPixcel(pOutputPcx->GetRow(startY + nRow), startX + nColumn, ShadowColor);
-                    }
-                }
-            }
-
-            return false;
-        }
-
-        // 绘制汉字文字
-
-        // 左边距为1，对齐Y中轴
-        int startX = nX + cFont->MarginLeft;
-        int startY = nY;
-        PUINT8 pFontFileBuffer = cFont->GetHzkCharacterPcxPointer(nCode1, nCode2);
-        for (int nRow = 0; nRow < cFont->Height; ++nRow)
-        {
-            for (int nColumn = 0; nColumn < cFont->Width; ++nColumn)
-            {
-                uint8_t alpha = *(pFontFileBuffer + (cFont->Height * nRow + nColumn));
-                if (alpha == 0)
-                {
-                    continue;
-                }
-
-                auto rgbFontColor = H3ARGB888(nFontColor);
-                rgbFontColor.Darken(-alpha);
-                DrawPixcel(pOutputPcx->GetRow(startY + nRow), startX + nColumn, rgbFontColor.Value());
-                // 是否绘制阴影
-                if (!cFont->DrawShadow)
-                {
-                    continue;
-                }
-                // 绘制阴影
-                DrawPixcel(pOutputPcx->GetRow(startY + nRow + 1), startX + nColumn + 1, ShadowColor);
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * @brief 读取字宽 H3中文: 0x403ABC 0x5331A0
-     * @param pFont ASCII字体
-     * @param cFont 扩展字体
-     * @param nChar 字符代码
-     * @return
-     */
-    int __fastcall GetFontCharWidth(H3Font* pFont, ExtFont* cFont, uint8_t nChar)
-    {
-        if (nChar < 160)
-        {
-            return pFont->width[nChar].leftMargin + pFont->width[nChar].span + pFont->width[nChar].rightMargin;
-        }
-        else
-        {
-            return cFont->MarginLeft + cFont->Width + cFont->MarginRight;
-        }
-    }
-
-    /**
      * @brief 拆分文本为行 H3Complete: 0x4B58F0
      * @param pFont ASCII字体
      * @param pStr 文本字符串
@@ -288,6 +189,86 @@ namespace H3FontExtension
     }
 
     /**
+     * @brief 绘制文字 H3中文: 0x532230 0x40C5B3
+     * @tparam T 彩色模式类型 仅支持 16位色、32位色
+     * @param pFont ASCII字体
+     * @param cFont 扩展字体
+     * @param pOutputPcx 图像输出
+     * @param nCode1 字符编码高位
+     * @param nCode2 字符编码低位
+     * @param nX 绘制位置左上角X坐标
+     * @param nY 绘制位置左上角Y坐标
+     * @param nFontColor RGB颜色码
+     * @param nShadowColor 阴影RGB颜色码
+     * @return
+     */
+    bool __fastcall H3Font_DrawChar(H3Font* pFont, ExtFont* cFont, H3LoadedPcx16* pOutputPcx, uint8_t cHiCode,
+                                    uint8_t cLoCode, int iX, int iY, DWORD uFontColor)
+    {
+        // 绘制英文文字
+        if (cLoCode == 0)
+        {
+            PUINT8 pFontBuffer = pFont->GetChar(cHiCode);
+            int startX = iX + pFont->width[cHiCode].leftMargin;
+            int startY = iY;
+            for (int nRow = 0; nRow < pFont->height; ++nRow)
+            {
+                for (int nColumn = 0; nColumn < pFont->width[cHiCode].span; ++nColumn)
+                {
+                    uint8_t nPixcel = *pFontBuffer++;
+                    if (!nPixcel)
+                    {
+                        continue;
+                    }
+
+                    // 255表示绘制正常颜色，否则则绘制阴影
+                    if (nPixcel == 255)
+                    {
+                        DrawPixcel(pOutputPcx->GetRow(startY + nRow), startX + nColumn, uFontColor);
+                    }
+                    else
+                    {
+                        DrawPixcel(pOutputPcx->GetRow(startY + nRow), startX + nColumn, ShadowColor);
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        // 绘制汉字文字
+
+        // 左边距为1，对齐Y中轴
+        int startX = iX + cFont->MarginLeft;
+        int startY = iY;
+        PUINT8 pFontFileBuffer = cFont->GetHzkCharacterPcxPointer(cHiCode, cLoCode);
+        for (int nRow = 0; nRow < cFont->Height; ++nRow)
+        {
+            for (int nColumn = 0; nColumn < cFont->Width; ++nColumn)
+            {
+                uint8_t alpha = *(pFontFileBuffer + (cFont->Height * nRow + nColumn));
+                if (alpha == 0)
+                {
+                    continue;
+                }
+
+                auto rgbFontColor = H3ARGB888(uFontColor);
+                rgbFontColor.Darken(-alpha);
+                DrawPixcel(pOutputPcx->GetRow(startY + nRow), startX + nColumn, rgbFontColor.Value());
+                // 是否绘制阴影
+                if (!cFont->DrawShadow)
+                {
+                    continue;
+                }
+                // 绘制阴影
+                DrawPixcel(pOutputPcx->GetRow(startY + nRow + 1), startX + nColumn + 1, ShadowColor);
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * @brief 绘制文字 H3中文: 0x4077D4 0x532BC0
      * @param pFont ASCII字体
      * @param pStr 文本字符串
@@ -303,7 +284,7 @@ namespace H3FontExtension
      */
     void __stdcall H3Font_DrawText(HiHook* h, H3Font* pFont, char* szText, H3LoadedPcx16* pPcx, int iX, int iY,
                                    int iBoxWidth, int iBoxHeight, uint32_t uColorIdx, uint32_t uAlignFlags,
-                                   int nFontStyle)
+                                   int iFontStyle)
     {
         if (iBoxWidth == 0 || !*szText)
         {
@@ -406,15 +387,15 @@ namespace H3FontExtension
                 UINT8 extCode = p.pText[i + 1];
                 if (code > 160 && extCode)
                 {
-                    DrawTextChar(pFont, cFont, pPcx, code, extCode, iX + startX + posMove,
-                                 iY + startY + cfontShift + rowIdx * cfontHeight, textColor);
+                    H3Font_DrawChar(pFont, cFont, pPcx, code, extCode, iX + startX + posMove,
+                                    iY + startY + cfontShift + rowIdx * cfontHeight, textColor);
                     posMove += cFont->Width;
                     ++i;
                 }
                 else
                 {
-                    DrawTextChar(pFont, cFont, pPcx, code, 0, iX + startX + posMove, iY + startY + rowIdx * cfontHeight,
-                                 textColor);
+                    H3Font_DrawChar(pFont, cFont, pPcx, code, 0, iX + startX + posMove,
+                                    iY + startY + rowIdx * cfontHeight, textColor);
                     posMove += pFont->width[code].leftMargin + pFont->width[code].span + pFont->width[code].rightMargin;
                 }
             }

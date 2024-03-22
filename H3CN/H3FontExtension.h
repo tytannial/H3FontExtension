@@ -46,10 +46,10 @@ namespace H3FontExtension
         {
         }
 
-        ExtFont(LPCSTR lpASCIIFontName, LPCSTR lpFileName, int nHeight, int nWidth, int nMarginLeft, int nMarginRight,
-                int nMarginBottom, bool bDrawShadow)
+        ExtFont(LPCSTR lpASCIIFontName, LPCSTR lpFileName, int iHeight, int iWidth, int iMarginLeft, int iMarginRight,
+                int iMarginBottom, bool bDrawShadow)
         {
-            LoadHzhFont(lpASCIIFontName, lpFileName, nHeight, nWidth, nMarginLeft, nMarginRight, nMarginBottom,
+            LoadHzhFont(lpASCIIFontName, lpFileName, iHeight, iWidth, iMarginLeft, iMarginRight, iMarginBottom,
                         bDrawShadow);
         }
 
@@ -60,8 +60,8 @@ namespace H3FontExtension
         /// <param name="nHeight"></param>
         /// <param name="nWidth"></param>
         /// <returns></returns>
-        bool __fastcall LoadHzhFont(LPCSTR lpASCIIFontName, LPCSTR lpFileName, int nHeight, int nWidth, int nMarginLeft,
-                                    int nMarginRight, int nMarginBottom, bool bDrawShadow)
+        bool __fastcall LoadHzhFont(LPCSTR lpASCIIFontName, LPCSTR lpFileName, int iHeight, int iWidth, int iMarginLeft,
+                                    int iMarginRight, int iMarginBottom, bool bDrawShadow)
         {
             std::ifstream file(lpFileName, std::ios::in | std::ios::binary);
 
@@ -75,15 +75,15 @@ namespace H3FontExtension
             std::streampos fileSize = file.tellg();
 
             this->DrawShadow = bDrawShadow;
-            this->MarginRight = nMarginRight;
-            this->MarginLeft = nMarginLeft;
-            this->MarginBottom = nMarginBottom;
-            this->Width = nWidth;
-            this->Height = nHeight;
+            this->MarginRight = iMarginRight;
+            this->MarginLeft = iMarginLeft;
+            this->MarginBottom = iMarginBottom;
+            this->Width = iWidth;
+            this->Height = iHeight;
             this->ASCIIFontName = std::string(lpASCIIFontName);
             this->FontFileBuffer = new UINT8[fileSize];
 
-            this->GlyphWidth = nMarginLeft + nWidth + nMarginRight;
+            this->GlyphWidth = iMarginLeft + iWidth + iMarginRight;
 
             file.seekg(0, std::ios::beg);
             file.read((char*)this->FontFileBuffer, fileSize);
