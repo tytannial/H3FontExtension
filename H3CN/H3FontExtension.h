@@ -14,7 +14,8 @@ static PatcherInstance* _PI;
 
 namespace H3FontExtension
 {
-    const uint16_t ShadowColor = 0;
+    constexpr uint16_t GBK_SECTION = 129;
+    constexpr uint16_t ShadowColor = 0;
 
     static bool Cmpt_TextColor = true;
     static toml::table TextColorMap;

@@ -103,7 +103,7 @@ namespace H3FontExtension
                     break;
                 }
 
-                if (code > 160u && *(wordCursor + 1))
+                if (code >= GBK_SECTION && *(wordCursor + 1))
                 {
                     if (wordWidth == 0)
                     {
@@ -385,7 +385,7 @@ namespace H3FontExtension
                 }
 
                 UINT8 extCode = p.pText[i + 1];
-                if (code > 160 && extCode)
+                if (code >= GBK_SECTION && extCode)
                 {
                     H3Font_DrawChar(pFont, cFont, pPcx, code, extCode, iX + startX + posMove,
                                     iY + startY + cfontShift + rowIdx * cfontHeight, textColor);
@@ -458,13 +458,13 @@ namespace H3FontExtension
             }
 
             // 单字节码
-            if (code < 0xA1 || code == 0xFF)
+            if (code < GBK_SECTION || code == 0xFF)
             {
                 wordWidth += pFont->width[code].leftMargin + pFont->width[code].span + pFont->width[code].rightMargin;
                 continue;
             }
 
-            // GBK范围0xA1 - OxFE，位码0x01-0xFE
+            // GBK范围0x81 - 0xFE，位码0x01-0xFE
             UINT8 extCode = szText[i + 1];
             if (extCode == '\0' || extCode == 0xFF) // GBK 0xFF位码为空
             {
@@ -529,7 +529,7 @@ namespace H3FontExtension
             charWidth = 0; // 重置字符宽度
 
             // 单字节码
-            if (code < 0xA1 || code == 0xFF)
+            if (code < GBK_SECTION || code == 0xFF)
             {
                 charWidth = pFont->width[code].leftMargin + pFont->width[code].span + pFont->width[code].rightMargin;
                 charSize = 1; // 单字节
@@ -538,7 +538,7 @@ namespace H3FontExtension
             {
                 // 获取位码
                 UINT8 extCode = szText[i + 1];
-                // GBK范围0xA1 - OxFE，位码0x01-0xFE
+                // GBK范围0x81 - 0xFE，位码0x01-0xFE
                 if (extCode != '\0' && extCode != 0xFF) // GBK 0xFF位码为空
                 {
                     charWidth = cFontWidth;
@@ -614,7 +614,7 @@ namespace H3FontExtension
             charWidth = 0; // 重置字符宽度
 
             // 单字节码
-            if (code < 0xA1 || code == 0xFF)
+            if (code < GBK_SECTION || code == 0xFF)
             {
                 charWidth = pFont->width[code].leftMargin + pFont->width[code].span + pFont->width[code].rightMargin;
                 charSize = 1; // 单字节
@@ -623,7 +623,7 @@ namespace H3FontExtension
             {
                 // 获取位码
                 UINT8 extCode = szText[i + 1];
-                // GBK范围0xA1 - OxFE，位码0x01-0xFE
+                // GBK范围0x81 - 0xFE，位码0x01-0xFE
                 if (extCode != '\0' && extCode != 0xFF) // GBK 0xFF位码为空
                 {
                     charWidth = cFontWidth;
@@ -677,7 +677,7 @@ namespace H3FontExtension
             }
 
             // 单字节码
-            if (code < 0xA1 || code == 0xFF)
+            if (code < GBK_SECTION || code == 0xFF)
             {
                 lineWidth += pFont->width[code].leftMargin + pFont->width[code].span + pFont->width[code].rightMargin;
                 continue;
@@ -685,7 +685,7 @@ namespace H3FontExtension
 
             // 获取位码
             UINT8 extCode = szText[i + 1];
-            // GBK范围0xA1 - OxFE，位码0x01-0xFE
+            // GBK范围0x81 - 0xFE，位码0x01-0xFE
             if (extCode == '\0' || extCode == 0xFF) // GBK 0xFF位码为空
             {
                 continue;
