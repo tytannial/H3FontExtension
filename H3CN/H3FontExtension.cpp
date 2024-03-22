@@ -161,7 +161,7 @@ namespace H3FontExtension
      * @param stringVector 拆分后的文本行容器
      * @return
      */
-    void __stdcall SplitTextIntoLines0(H3Font* pFont, char* szText, const int iBoxWidth, vector<TextLineStruct>& lines)
+    void __stdcall SplitTextIntoLines(H3Font* pFont, char* szText, const int iBoxWidth, vector<TextLineStruct>& lines)
     {
         ExtFont* cFont = GetMappedExtFont(pFont);
         // 获取空格宽度
@@ -327,7 +327,7 @@ namespace H3FontExtension
 
         // 拆行计算各行长短
         vector<TextLineStruct> textLines;
-        SplitTextIntoLines0(pFont, szText, iBoxWidth, textLines);
+        SplitTextIntoLines(pFont, szText, iBoxWidth, textLines);
 
         int startY = 0;
         // 垂直居中对齐
@@ -436,130 +436,14 @@ namespace H3FontExtension
      * @param stringVector 拆分后的文本行容器
      * @return
      */
-    void __stdcall SplitTextIntoLines(HiHook* h, H3Font* pFont, char* szText, const int iBoxWidth,
-                                      H3Vector<H3String>& lines)
+    void __stdcall H3Font_SplitTextIntoLines(HiHook* h, H3Font* pFont, char* szText, const int iBoxWidth,
+                                             H3Vector<H3String>& lines)
     {
-        ExtFont* cFont = GetMappedExtFont(pFont);
-        // 获取空格宽度
-        int spaceWidth = pFont->width[32].span + pFont->width[32].leftMargin + pFont->width[32].rightMargin;
-
-        int lineWidth = 0;
-        H3String strBuffer;
-
-        while (*szText)
+        vector<TextLineStruct> vlines;
+        SplitTextIntoLines(pFont, szText, iBoxWidth, vlines);
+        for (auto& line : vlines)
         {
-            // 行首空格和换行符处理
-            int blankWidth = 0;
-            int blankCount = 0;
-            for (UINT8 code = *szText; code == ' ' || code == '\n'; code = *++szText)
-            {
-                if (code == ' ')
-                {
-                    blankWidth += spaceWidth;
-                    ++blankCount;
-                    continue;
-                }
-
-                lines.Add(strBuffer);
-                strBuffer = H3String();
-                lineWidth = 0;
-                blankWidth = 0;
-                blankCount = 0;
-            }
-
-            // 通过空格或换行符取词，一个汉字算作一个词
-            int wordWidth = 0;
-            char* wordCursor = szText;
-            for (UINT8 code = *wordCursor; *wordCursor != '\0'; code = *++wordCursor)
-            {
-                if (code == ' ' || code == '\n')
-                {
-                    break;
-                }
-
-                if (code > 160u && *(wordCursor + 1))
-                {
-                    if (wordWidth == 0)
-                    {
-                        wordWidth = cFont->GlyphWidth;
-                        wordCursor += 2;
-                    }
-                    break;
-                }
-
-                // BUGFIX: 原版里词宽计算了颜色字符
-                if (code == '{' || code == '}')
-                {
-                    continue;
-                }
-
-                wordWidth += pFont->width[code].leftMargin + pFont->width[code].span + pFont->width[code].rightMargin;
-            };
-
-            // 当前的 句宽+取到的词宽+空白宽度 大于文本框宽度
-            if (lineWidth + wordWidth + blankWidth > iBoxWidth)
-            {
-                // 判断句宽进行换行
-                if (lineWidth > 0)
-                {
-                    lines.Add(strBuffer);
-                    strBuffer = H3String();
-                    lineWidth = 0;
-                }
-
-                blankCount = 0; // 移除行首空格
-                blankWidth = 0; // 重置空格宽度
-
-                // 如果取词的宽超过过了文本框的宽
-                // 强行断行，将词拆行显示直到词宽，
-                // 小于文本边框宽度
-                while (wordWidth > iBoxWidth)
-                {
-                    for (UINT8 code = *wordCursor; *wordCursor != '\0'; code = *++wordCursor)
-                    {
-                        if (code == ' ' || code == '\n')
-                        {
-                            break;
-                        }
-
-                        int charWidth =
-                            pFont->width[code].leftMargin + pFont->width[code].span + pFont->width[code].rightMargin;
-                        if (charWidth + lineWidth > iBoxWidth)
-                        {
-                            break;
-                        }
-
-                        strBuffer.Append(code);
-                        lineWidth += charWidth;
-                        wordWidth -= charWidth;
-                    };
-
-                    lines.Add(strBuffer);
-                    lineWidth = 0;
-                    strBuffer = H3String();
-                }
-            }
-
-            // 插入词前空格
-            strBuffer.Insert(blankCount, ' ');
-
-            // 将词填入句末
-            if (szText != wordCursor)
-            {
-                strBuffer.Append(szText, wordCursor - szText);
-                szText = wordCursor;
-            };
-
-            // 句宽增加词的宽度
-            lineWidth += wordWidth;
-            // 句宽增加空格宽度
-            lineWidth += blankWidth;
-        }
-
-        // 文本剩余单独成句
-        if (lineWidth > 0)
-        {
-            lines.Add(strBuffer);
+            lines.Add(line.pText);
         }
     }
 
@@ -570,7 +454,7 @@ namespace H3FontExtension
      * @param szText 文本段
      * @return 最长的一个词
      */
-    int __stdcall GetWordWidth(HiHook* h, H3Font* pFont, char* szText)
+    int __stdcall H3Font_GetWordWidth(HiHook* h, H3Font* pFont, char* szText)
     {
         ExtFont* cFont = GetMappedExtFont(pFont);
 
@@ -620,7 +504,7 @@ namespace H3FontExtension
      * @param iBoxWidth
      * @return
      */
-    int __stdcall GetLineWrapWidth(HiHook* h, H3Font* pFont, char* szText, int iBoxWidth)
+    int __stdcall H3Font_GetLineWrapWidth(HiHook* h, H3Font* pFont, char* szText, int iBoxWidth)
     {
         ExtFont* cFont = GetMappedExtFont(pFont);
         int cFontWidth = cFont->MarginLeft + cFont->Width + cFont->MarginRight;
@@ -705,7 +589,7 @@ namespace H3FontExtension
      * @param iWidth
      * @return
      */
-    int __stdcall GetLineCount(HiHook* h, H3Font* pFont, char* szText, int iBoxWidth)
+    int __stdcall H3Font_GetLineCount(HiHook* h, H3Font* pFont, char* szText, int iBoxWidth)
     {
         ExtFont* cFont = GetMappedExtFont(pFont);
         int cFontWidth = cFont->MarginLeft + cFont->Width + cFont->MarginRight;
@@ -788,7 +672,7 @@ namespace H3FontExtension
      * @param szText
      * @return
      */
-    int __stdcall GetLineWidth(HiHook* h, H3Font* pFont, char* szText)
+    int __stdcall H3Font_GetLineWidth(HiHook* h, H3Font* pFont, char* szText)
     {
         ExtFont* cFont = GetMappedExtFont(pFont);
 
@@ -885,11 +769,11 @@ namespace H3FontExtension
 
         // 注入函数劫持
         _PI->WriteHiHook(0x4B51F0, SPLICE_, THISCALL_, H3Font_DrawText);
-        _PI->WriteHiHook(0x4B5580, SPLICE_, THISCALL_, GetLineCount);     // 计算文本的行数
-        _PI->WriteHiHook(0x4B56F0, SPLICE_, THISCALL_, GetLineWidth);     // 最长文本行长度
-        _PI->WriteHiHook(0x4B5770, SPLICE_, THISCALL_, GetWordWidth);     // 最长单词长度
-        _PI->WriteHiHook(0x4B57E0, SPLICE_, THISCALL_, GetLineWrapWidth); // 最长换行长度
-        _PI->WriteHiHook(0x4B58F0, SPLICE_, THISCALL_, SplitTextIntoLines);
+        _PI->WriteHiHook(0x4B5580, SPLICE_, THISCALL_, H3Font_GetLineCount);     // 计算文本的行数
+        _PI->WriteHiHook(0x4B56F0, SPLICE_, THISCALL_, H3Font_GetLineWidth);     // 最长文本行长度
+        _PI->WriteHiHook(0x4B5770, SPLICE_, THISCALL_, H3Font_GetWordWidth);     // 最长单词长度
+        _PI->WriteHiHook(0x4B57E0, SPLICE_, THISCALL_, H3Font_GetLineWrapWidth); // 最长换行长度
+        _PI->WriteHiHook(0x4B58F0, SPLICE_, THISCALL_, H3Font_SplitTextIntoLines);
 
         return true;
     }
