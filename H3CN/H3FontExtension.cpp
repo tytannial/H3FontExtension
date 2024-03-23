@@ -351,6 +351,12 @@ namespace H3FontExtension
         int rowIdx = 0;
         for (const TextLineStruct& p : textLines)
         {
+            // 当前行绘制后溢出文本框则不绘制
+            if (startY + (rowIdx + 1) * cfontHeight > iBoxHeight)
+            {
+                break;
+            }
+
             // 水平左右对齐
             int startX = 0;
             switch (uAlignFlags)
@@ -401,13 +407,8 @@ namespace H3FontExtension
             }
 
             ++rowIdx;
-
-            if (startY + rowIdx * cfontHeight > startY + iBoxHeight)
-            {
-                break;
             }
         }
-    }
 
     /**
      * @brief 拆分文本为行 H3Complete: 0x4B58F0
