@@ -5,10 +5,11 @@
 [General]
 TextColor = true # 兼容SoD_SP的彩色字体插件
 
-# 如果没特殊需要不需要动这块
+# 用于调整弹出框的参数（未实现）
 [MessageBox]
-MinLineWidth = 0    # 最小行宽度
-MaxLineWidth = 400  # 最大行宽度
+BoxWidthModify = 0    # 弹出框宽度修正
+BoxWidthMin    = 0    # 最小宽度
+BoxWidthMax    = 0    # 最大宽度
 
 # 字体映射定义
 # Name: H3字体名称（切勿修改）

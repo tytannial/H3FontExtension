@@ -286,7 +286,7 @@ namespace H3FontExtension
                                    int iBoxWidth, int iBoxHeight, uint32_t uColorIdx, uint32_t uAlignFlags,
                                    int iFontStyle)
     {
-        if (iBoxWidth == 0 || !*szText)
+        if (!*szText || iBoxWidth == 0)
         {
             return;
         }
@@ -340,7 +340,7 @@ namespace H3FontExtension
         }
 
         int cfontShift = (pFont->height - cFont->Height) / 2.0;
-        int cfontHeight = std::max(pFont->height, cFont->Height);
+        int cfontHeight = std::min(pFont->height, cFont->Height);
 
         // 处理颜色代码
         uColorIdx = uColorIdx & 0x100 ? uColorIdx & 0xFE : uColorIdx + 9;
@@ -390,25 +390,27 @@ namespace H3FontExtension
                     continue;
                 }
 
+                if (code < GBK_SECTION || code == 0xFF)
+                {
+                    H3Font_DrawChar(pFont, cFont, pPcx, code, 0, iX + startX + posMove,
+                                    iY + startY + rowIdx * cfontHeight, textColor);
+                    posMove += pFont->width[code].leftMargin + pFont->width[code].span + pFont->width[code].rightMargin;
+                    continue;
+                }
+
                 UINT8 extCode = p.pText[i + 1];
-                if (code >= GBK_SECTION && extCode)
+                if (extCode && extCode != 0xFF)
                 {
                     H3Font_DrawChar(pFont, cFont, pPcx, code, extCode, iX + startX + posMove,
                                     iY + startY + cfontShift + rowIdx * cfontHeight, textColor);
                     posMove += cFont->GlyphWidth;
                     ++i;
                 }
-                else
-                {
-                    H3Font_DrawChar(pFont, cFont, pPcx, code, 0, iX + startX + posMove,
-                                    iY + startY + rowIdx * cfontHeight, textColor);
-                    posMove += pFont->width[code].leftMargin + pFont->width[code].span + pFont->width[code].rightMargin;
-                }
             }
 
             ++rowIdx;
-            }
         }
+    }
 
     /**
      * @brief 拆分文本为行 H3Complete: 0x4B58F0
@@ -438,10 +440,8 @@ namespace H3FontExtension
      */
     int __stdcall H3Font_GetWordWidth(HiHook* h, H3Font* pFont, char* szText)
     {
-        ExtFont* cFont = GetMappedExtFont(pFont);
-
         int strLength = strlen(szText);
-        int maxWidth = cFont->MarginLeft + cFont->Width + cFont->MarginRight;
+        int maxWidth = 256 + BoxWidthModify;
         int wordWidth = 0;
         for (int i = 0; i < strLength; ++i)
         {
@@ -467,7 +467,7 @@ namespace H3FontExtension
 
             // GBK范围0x81 - 0xFE，位码0x01-0xFE
             UINT8 extCode = szText[i + 1];
-            if (extCode == '\0' || extCode == 0xFF) // GBK 0xFF位码为空
+            if (extCode || extCode == 0xFF) // GBK 0xFF位码为空
             {
                 continue;
             }
@@ -540,7 +540,7 @@ namespace H3FontExtension
                 // 获取位码
                 UINT8 extCode = szText[i + 1];
                 // GBK范围0x81 - 0xFE，位码0x01-0xFE
-                if (extCode != '\0' && extCode != 0xFF) // GBK 0xFF位码为空
+                if (extCode && extCode != 0xFF) // GBK 0xFF位码为空
                 {
                     charWidth = cFontWidth;
                     charSize = 2; // 双字节
@@ -625,7 +625,7 @@ namespace H3FontExtension
                 // 获取位码
                 UINT8 extCode = szText[i + 1];
                 // GBK范围0x81 - 0xFE，位码0x01-0xFE
-                if (extCode != '\0' && extCode != 0xFF) // GBK 0xFF位码为空
+                if (extCode && extCode != 0xFF) // GBK 0xFF位码为空
                 {
                     charWidth = cFontWidth;
                     charSize = 2; // 双字节
@@ -687,7 +687,7 @@ namespace H3FontExtension
             // 获取位码
             UINT8 extCode = szText[i + 1];
             // GBK范围0x81 - 0xFE，位码0x01-0xFE
-            if (extCode == '\0' || extCode == 0xFF) // GBK 0xFF位码为空
+            if (extCode || extCode == 0xFF) // GBK 0xFF位码为空
             {
                 continue;
             }
@@ -737,12 +737,7 @@ namespace H3FontExtension
             }
 
             // 文本行宽计算规则限制
-            MinLineWidth = config["MessageBox"]["MinLineWidth"].value_or(256);
-            MaxLineWidth = config["MessageBox"]["MaxLineWidth"].value_or(-1);
-            if (MaxLineWidth == -1)
-            {
-                MaxLineWidth = H3GameWidth::Get() / 2 - 32 * 2;
-            }
+            BoxWidthModify = config["MessageBox"]["BoxWidthModify"].value_or(0);
         }
         catch (const std::exception&)
         {
