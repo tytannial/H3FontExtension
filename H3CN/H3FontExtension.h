@@ -14,7 +14,10 @@ static PatcherInstance* _PI;
 
 namespace H3FontExtension
 {
+    // 双字节码表定义
     constexpr uint16_t GBK_SECTION = 129;
+
+    // 字符阴影颜色
     constexpr uint16_t ShadowColor = 0;
 
     static bool Cmpt_TextColor = true;
@@ -99,11 +102,6 @@ namespace H3FontExtension
          */
         inline PUINT8 __fastcall GetHzkCharacterPcxPointer(UINT8 section, UINT8 position)
         {
-            // GB2312
-            // return this->FontFileBuffer + this->Width * ((this->Height + 7) >> 3) * (0x5E * (section - 0xA1) +
-            // position - 0xA1);
-
-            // GBK
             return this->FontFileBuffer + this->Width * this->Height * ((section - 0x81) * 0xBF + position - 0x40);
         }
     };

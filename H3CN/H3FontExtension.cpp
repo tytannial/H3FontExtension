@@ -103,7 +103,8 @@ namespace H3FontExtension
                     break;
                 }
 
-                if (code >= GBK_SECTION && *(wordCursor + 1))
+                UINT8 extCode = *(wordCursor + 1);
+                if (code >= GBK_SECTION && extCode && extCode != 0xFF)
                 {
                     if (wordWidth == 0)
                     {
@@ -211,9 +212,9 @@ namespace H3FontExtension
             PUINT8 pFontBuffer = pFont->GetChar(cHiCode);
             int startX = iX + pFont->width[cHiCode].leftMargin;
             int startY = iY;
-            for (int nRow = 0; nRow < pFont->height; ++nRow)
+            for (int rowIdx = 0; rowIdx < pFont->height; ++rowIdx)
             {
-                for (int nColumn = 0; nColumn < pFont->width[cHiCode].span; ++nColumn)
+                for (int colIdx = 0; colIdx < pFont->width[cHiCode].span; ++colIdx)
                 {
                     uint8_t nPixcel = *pFontBuffer++;
                     if (!nPixcel)
@@ -224,11 +225,11 @@ namespace H3FontExtension
                     // 255表示绘制正常颜色，否则则绘制阴影
                     if (nPixcel == 255)
                     {
-                        DrawPixcel(pOutputPcx->GetRow(startY + nRow), startX + nColumn, uFontColor);
+                        DrawPixcel(pOutputPcx->GetRow(startY + rowIdx), startX + colIdx, uFontColor);
                     }
                     else
                     {
-                        DrawPixcel(pOutputPcx->GetRow(startY + nRow), startX + nColumn, ShadowColor);
+                        DrawPixcel(pOutputPcx->GetRow(startY + rowIdx), startX + colIdx, ShadowColor);
                     }
                 }
             }
@@ -242,11 +243,12 @@ namespace H3FontExtension
         int startX = iX + cFont->MarginLeft;
         int startY = iY;
         PUINT8 pFontFileBuffer = cFont->GetHzkCharacterPcxPointer(cHiCode, cLoCode);
-        for (int nRow = 0; nRow < cFont->Height; ++nRow)
+
+        for (int rowIdx = 0; rowIdx < cFont->Height; ++rowIdx)
         {
-            for (int nColumn = 0; nColumn < cFont->Width; ++nColumn)
+            for (int colIdx = 0; colIdx < cFont->Width; ++colIdx)
             {
-                uint8_t alpha = *(pFontFileBuffer + (cFont->Height * nRow + nColumn));
+                uint8_t alpha = *(pFontFileBuffer + (cFont->Height * rowIdx + colIdx));
                 if (alpha == 0)
                 {
                     continue;
@@ -254,14 +256,14 @@ namespace H3FontExtension
 
                 auto rgbFontColor = H3ARGB888(uFontColor);
                 rgbFontColor.Darken(-alpha);
-                DrawPixcel(pOutputPcx->GetRow(startY + nRow), startX + nColumn, rgbFontColor.Value());
+                DrawPixcel(pOutputPcx->GetRow(startY + rowIdx), startX + colIdx, rgbFontColor.Value());
                 // 是否绘制阴影
                 if (!cFont->DrawShadow)
                 {
                     continue;
                 }
                 // 绘制阴影
-                DrawPixcel(pOutputPcx->GetRow(startY + nRow + 1), startX + nColumn + 1, ShadowColor);
+                DrawPixcel(pOutputPcx->GetRow(startY + rowIdx + 1), startX + colIdx + 1, ShadowColor);
             }
         }
 
@@ -340,7 +342,7 @@ namespace H3FontExtension
         }
 
         int cfontShift = (pFont->height - cFont->Height) / 2.0;
-        int cfontHeight = std::min(pFont->height, cFont->Height);
+        int cfontHeight = std::max(pFont->height, cFont->Height);
 
         // 处理颜色代码
         uColorIdx = uColorIdx & 0x100 ? uColorIdx & 0xFE : uColorIdx + 9;
@@ -441,7 +443,10 @@ namespace H3FontExtension
     int __stdcall H3Font_GetWordWidth(HiHook* h, H3Font* pFont, char* szText)
     {
         int strLength = strlen(szText);
-        int maxWidth = 256 + BoxWidthModify;
+        if (strLength <= 0)
+            return 0;
+
+        int maxWidth = 256;
         int wordWidth = 0;
         for (int i = 0; i < strLength; ++i)
         {
@@ -465,9 +470,10 @@ namespace H3FontExtension
                 continue;
             }
 
-            // GBK范围0x81 - 0xFE，位码0x01-0xFE
+            // 单字节码
             UINT8 extCode = szText[i + 1];
-            if (extCode || extCode == 0xFF) // GBK 0xFF位码为空
+            // GBK范围0x81-0xFE，位码0x01-0xFE
+            if (extCode || extCode == 0xFF)
             {
                 continue;
             }
@@ -537,10 +543,10 @@ namespace H3FontExtension
             }
             else
             {
-                // 获取位码
+                // 单字节码
                 UINT8 extCode = szText[i + 1];
-                // GBK范围0x81 - 0xFE，位码0x01-0xFE
-                if (extCode && extCode != 0xFF) // GBK 0xFF位码为空
+                // GBK范围0x81-0xFE，位码0x01-0xFE
+                if (extCode && extCode != 0xFF)
                 {
                     charWidth = cFontWidth;
                     charSize = 2; // 双字节
@@ -622,10 +628,10 @@ namespace H3FontExtension
             }
             else
             {
-                // 获取位码
+                // 双字节码
                 UINT8 extCode = szText[i + 1];
-                // GBK范围0x81 - 0xFE，位码0x01-0xFE
-                if (extCode && extCode != 0xFF) // GBK 0xFF位码为空
+                // GBK范围0x81-0xFE，位码0x01-0xFE
+                if (extCode && extCode != 0xFF)
                 {
                     charWidth = cFontWidth;
                     charSize = 2; // 双字节
@@ -659,6 +665,8 @@ namespace H3FontExtension
         ExtFont* cFont = GetMappedExtFont(pFont);
 
         int strLength = strlen(szText);
+        if (strLength <= 0)
+            return 0;
 
         int maxWidth = 0;
         int lineWidth = 0;
@@ -687,7 +695,7 @@ namespace H3FontExtension
             // 获取位码
             UINT8 extCode = szText[i + 1];
             // GBK范围0x81 - 0xFE，位码0x01-0xFE
-            if (extCode || extCode == 0xFF) // GBK 0xFF位码为空
+            if (!extCode || extCode == 0xFF) // GBK 0xFF位码为空
             {
                 continue;
             }
