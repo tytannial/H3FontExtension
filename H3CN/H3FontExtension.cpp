@@ -317,8 +317,8 @@ namespace H3FontExtension
         if (uAlignFlags & eTextAlignment::VCENTER)
         {
             uAlignFlags &= ~eTextAlignment::VCENTER;
-            int nTotalHeight = pFont->height * textLines.size(); // 文本总高度
-            if (nTotalHeight >= iBoxHeight)
+            int textTotalHeight = pFont->height * textLines.size(); // 文本总高度
+            if (textTotalHeight >= iBoxHeight)
             {
                 if (iBoxHeight < 2 * pFont->height)
                 {
@@ -327,17 +327,17 @@ namespace H3FontExtension
             }
             else
             {
-                startY = (iBoxHeight - nTotalHeight) / 2;
+                startY = (iBoxHeight - textTotalHeight) / 2;
             }
         }
         // 垂直底部对齐
         if (uAlignFlags & eTextAlignment::VBOTTOM)
         {
             uAlignFlags &= ~eTextAlignment::VBOTTOM;
-            int nTotalHeight = pFont->height * textLines.size(); // 文本总高度
-            if (nTotalHeight < iBoxHeight)
+            int textTotalHeight = pFont->height * textLines.size(); // 文本总高度
+            if (textTotalHeight < iBoxHeight)
             {
-                startY = iBoxHeight - nTotalHeight;
+                startY = iBoxHeight - textTotalHeight;
             }
         }
 
@@ -374,7 +374,6 @@ namespace H3FontExtension
                 break;
             }
 
-            int colorNameSubIndex = 0;
             int posMove = 0;
             for (int i = 0; i < p.iLength; ++i)
             {
@@ -410,6 +409,7 @@ namespace H3FontExtension
                 }
             }
 
+            // 推进行
             ++rowIdx;
         }
     }
