@@ -104,7 +104,7 @@ namespace H3FontExtension
                 }
 
                 UINT8 extCode = *(wordCursor + 1);
-                if (code >= GBK_SECTION && extCode && extCode != 0xFF)
+                if (code >= DBCS_SECTION && extCode && extCode != 0xFF && extCode >= DBCS_POSITION)
                 {
                     if (wordWidth == 0)
                     {
@@ -341,7 +341,7 @@ namespace H3FontExtension
             }
         }
 
-        int cfontShift = (pFont->height - cFont->Height) / 2.0;
+        int cfontShift = std::max(0, (pFont->height - cFont->Height) / 2);
         int cfontHeight = std::max(pFont->height, cFont->Height);
 
         // 处理颜色代码
@@ -354,7 +354,7 @@ namespace H3FontExtension
         for (const TextLineStruct& p : textLines)
         {
             // 当前行绘制后溢出文本框则不绘制
-            if (startY + (rowIdx + 1) * cfontHeight > iBoxHeight)
+            if (startY + (rowIdx + 1) * pFont->height > iBoxHeight)
             {
                 break;
             }
@@ -391,7 +391,7 @@ namespace H3FontExtension
                     continue;
                 }
 
-                if (code < GBK_SECTION || code == 0xFF)
+                if (code < DBCS_SECTION || code == 0xFF)
                 {
                     H3Font_DrawChar(pFont, cFont, pPcx, code, 0, iX + startX + posMove,
                                     iY + startY + rowIdx * cfontHeight, textColor);
@@ -400,7 +400,7 @@ namespace H3FontExtension
                 }
 
                 UINT8 extCode = p.pText[i + 1];
-                if (extCode && extCode != 0xFF)
+                if (extCode && extCode != 0xFF && extCode >= DBCS_POSITION)
                 {
                     H3Font_DrawChar(pFont, cFont, pPcx, code, extCode, iX + startX + posMove,
                                     iY + startY + cfontShift + rowIdx * cfontHeight, textColor);
@@ -464,16 +464,16 @@ namespace H3FontExtension
             }
 
             // 单字节码
-            if (code < GBK_SECTION || code == 0xFF)
+            if (code < DBCS_SECTION || code == 0xFF)
             {
                 wordWidth += pFont->width[code].leftMargin + pFont->width[code].span + pFont->width[code].rightMargin;
                 continue;
             }
 
-            // 单字节码
+            // 双字节码
             UINT8 extCode = szText[i + 1];
-            // GBK范围0x81-0xFE，位码0x01-0xFE
-            if (extCode || extCode == 0xFF)
+            // GBK范围0x81-0xFE，位码0x41-0xFE
+            if (extCode || extCode == 0xFF || extCode < DBCS_POSITION)
             {
                 continue;
             }
@@ -536,7 +536,7 @@ namespace H3FontExtension
             charWidth = 0; // 重置字符宽度
 
             // 单字节码
-            if (code < GBK_SECTION || code == 0xFF)
+            if (code < DBCS_SECTION || code == 0xFF)
             {
                 charWidth = pFont->width[code].leftMargin + pFont->width[code].span + pFont->width[code].rightMargin;
                 charSize = 1; // 单字节
@@ -545,8 +545,8 @@ namespace H3FontExtension
             {
                 // 单字节码
                 UINT8 extCode = szText[i + 1];
-                // GBK范围0x81-0xFE，位码0x01-0xFE
-                if (extCode && extCode != 0xFF)
+                // GBK范围0x81-0xFE，位码0x41-0xFE
+                if (extCode && extCode != 0xFF && extCode >= DBCS_POSITION)
                 {
                     charWidth = cFontWidth;
                     charSize = 2; // 双字节
@@ -621,7 +621,7 @@ namespace H3FontExtension
             charWidth = 0; // 重置字符宽度
 
             // 单字节码
-            if (code < GBK_SECTION || code == 0xFF)
+            if (code < DBCS_SECTION || code == 0xFF)
             {
                 charWidth = pFont->width[code].leftMargin + pFont->width[code].span + pFont->width[code].rightMargin;
                 charSize = 1; // 单字节
@@ -630,8 +630,8 @@ namespace H3FontExtension
             {
                 // 双字节码
                 UINT8 extCode = szText[i + 1];
-                // GBK范围0x81-0xFE，位码0x01-0xFE
-                if (extCode && extCode != 0xFF)
+                // GBK范围0x81-0xFE，位码0x41-0xFE
+                if (extCode && extCode != 0xFF && extCode >= DBCS_POSITION)
                 {
                     charWidth = cFontWidth;
                     charSize = 2; // 双字节
@@ -686,7 +686,7 @@ namespace H3FontExtension
             }
 
             // 单字节码
-            if (code < GBK_SECTION || code == 0xFF)
+            if (code < DBCS_SECTION || code == 0xFF)
             {
                 lineWidth += pFont->width[code].leftMargin + pFont->width[code].span + pFont->width[code].rightMargin;
                 continue;
@@ -694,8 +694,8 @@ namespace H3FontExtension
 
             // 获取位码
             UINT8 extCode = szText[i + 1];
-            // GBK范围0x81 - 0xFE，位码0x01-0xFE
-            if (!extCode || extCode == 0xFF) // GBK 0xFF位码为空
+            // GBK范围0x81 - 0xFE，位码0x41-0xFE
+            if (!extCode || extCode == 0xFF || extCode < DBCS_POSITION) // GBK 0xFF位码为空
             {
                 continue;
             }
@@ -754,11 +754,13 @@ namespace H3FontExtension
 
         // 注入函数劫持
         _PI->WriteHiHook(0x4B51F0, SPLICE_, THISCALL_, H3Font_DrawText);
-        _PI->WriteHiHook(0x4B5580, SPLICE_, THISCALL_, H3Font_GetLineCount);     // 计算文本的行数
-        _PI->WriteHiHook(0x4B56F0, SPLICE_, THISCALL_, H3Font_GetLineWidth);     // 最长文本行长度
-        _PI->WriteHiHook(0x4B5770, SPLICE_, THISCALL_, H3Font_GetWordWidth);     // 最长单词长度
-        _PI->WriteHiHook(0x4B57E0, SPLICE_, THISCALL_, H3Font_GetLineWrapWidth); // 最长换行长度
-        _PI->WriteHiHook(0x4B58F0, SPLICE_, THISCALL_, H3Font_SplitTextIntoLines);
+        _PI->WriteHiHook(0x4B5580, SPLICE_, THISCALL_, H3Font_GetLineCount);       // 计算文本的行数
+        _PI->WriteHiHook(0x4B56F0, SPLICE_, THISCALL_, H3Font_GetLineWidth);       // 最长文本行长度
+        _PI->WriteHiHook(0x4B5770, SPLICE_, THISCALL_, H3Font_GetWordWidth);       // 最长单词长度
+        _PI->WriteHiHook(0x4B57E0, SPLICE_, THISCALL_, H3Font_GetLineWrapWidth);   // 最长换行长度
+        _PI->WriteHiHook(0x4B58F0, SPLICE_, THISCALL_, H3Font_SplitTextIntoLines); // 拆分文本行
+
+        // TODO: 字体加载函数Hook，将汉字库进行注入
 
         return true;
     }

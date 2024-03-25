@@ -14,8 +14,19 @@ static PatcherInstance* _PI;
 
 namespace H3FontExtension
 {
-    // 双字节码表定义
-    constexpr uint16_t GBK_SECTION = 129;
+    /* 双字节码表定义
+     * GBK范围
+     * 0x8140-A0FE，收录 CJK 汉字 6080 个
+     * 0xA1A1-A9FE，除 GB 2312 的符号外，还增补了其它符号
+     * 0xAA40-A0FE，收录 CJK 汉字和增补的汉字 8160 个
+     * 0xA840-A9A0，扩除非汉字区
+     * 0xB0A1-F7FE，收录 GB 2312 汉字 6763 个，按原序排列
+     * BIG5范围
+     * 0xA140-0xA3BF：标点符号、希腊字母及特殊符号
+     * 0xA440-0xC67E：常用汉字，先按笔划再按部首排序
+     */
+    constexpr uint8_t DBCS_SECTION = 0x81;
+    constexpr uint8_t DBCS_POSITION = 0x41;
 
     // 字符阴影颜色
     constexpr uint16_t ShadowColor = 0;
