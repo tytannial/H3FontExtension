@@ -293,18 +293,6 @@ namespace H3FontExtension
             return;
         }
 
-        // 根据游戏的图像模式初始化图像渲染
-        if (H3BitMode::Get() == 4)
-        {
-            GetColor = GetColor32;
-            DrawPixcel = DrawPixcel32;
-        }
-        else
-        {
-            GetColor = GetColor16;
-            DrawPixcel = DrawPixcel16;
-        }
-
         // 汉字字体
         ExtFont* cFont = GetMappedExtFont(pFont);
 
@@ -495,7 +483,6 @@ namespace H3FontExtension
     int __stdcall H3Font_GetLineWrapWidth(HiHook* h, H3Font* pFont, char* szText, int iBoxWidth)
     {
         ExtFont* cFont = GetMappedExtFont(pFont);
-        int cFontWidth = cFont->MarginLeft + cFont->Width + cFont->MarginRight;
 
         int strLength = strlen(szText);
         if (strLength <= 0)
@@ -548,7 +535,7 @@ namespace H3FontExtension
                 // GBK范围0x81-0xFE，位码0x41-0xFE
                 if (extCode && extCode != 0xFF && extCode >= DBCS_POSITION)
                 {
-                    charWidth = cFontWidth;
+                    charWidth = cFont->GlyphWidth;
                     charSize = 2; // 双字节
                     ++i;          // 双字节跳过高位字符
                 }
@@ -580,7 +567,6 @@ namespace H3FontExtension
     int __stdcall H3Font_GetLineCount(HiHook* h, H3Font* pFont, char* szText, int iBoxWidth)
     {
         ExtFont* cFont = GetMappedExtFont(pFont);
-        int cFontWidth = cFont->MarginLeft + cFont->Width + cFont->MarginRight;
 
         int strLength = strlen(szText);
         if (strLength <= 0)
@@ -633,7 +619,7 @@ namespace H3FontExtension
                 // GBK范围0x81-0xFE，位码0x41-0xFE
                 if (extCode && extCode != 0xFF && extCode >= DBCS_POSITION)
                 {
-                    charWidth = cFontWidth;
+                    charWidth = cFont->GlyphWidth;
                     charSize = 2; // 双字节
                     ++i;          // 双字节跳过高位字符
                 }
@@ -700,11 +686,28 @@ namespace H3FontExtension
                 continue;
             }
 
-            lineWidth += cFont->MarginLeft + cFont->Width + cFont->MarginRight;
+            lineWidth += cFont->GlyphWidth;
             ++i;
         }
 
         return max(lineWidth, maxWidth);
+    }
+
+    void __stdcall Main_DirectDrawInit_Hook(HiHook* h)
+    {
+        FASTCALL_0(void, h->GetDefaultFunc());
+
+        // 根据游戏的图像模式初始化图像渲染
+        if (H3BitMode::Get() == 4)
+        {
+            GetColor = GetColor32;
+            DrawPixcel = DrawPixcel32;
+        }
+        else
+        {
+            GetColor = GetColor16;
+            DrawPixcel = DrawPixcel16;
+        }
     }
 
     /**
@@ -760,7 +763,8 @@ namespace H3FontExtension
         _PI->WriteHiHook(0x4B57E0, SPLICE_, THISCALL_, H3Font_GetLineWrapWidth);   // 最长换行长度
         _PI->WriteHiHook(0x4B58F0, SPLICE_, THISCALL_, H3Font_SplitTextIntoLines); // 拆分文本行
 
-        // TODO: 字体加载函数Hook，将汉字库进行注入
+        // 挂载一个扩展函数在游戏DDraw初始化的位置 用于检测色彩模式
+        _PI->WriteHiHook(0x601AB0, SPLICE_, FASTCALL_, EXTENDED_, Main_DirectDrawInit_Hook);
 
         return true;
     }

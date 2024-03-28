@@ -1,8 +1,6 @@
 #pragma once
 
-#include <map>
-#include <ranges>
-#include <vector>
+#include <unordered_map>
 
 #define _H3API_PATCHER_X86_
 
@@ -120,7 +118,7 @@ namespace H3FontExtension
     // 汉字字体全局变量
     static ExtFont* g_ExtFontTable[9];
 
-    static std::map<h3::H3Font*, ExtFont*> FontMap;
+    static std::unordered_map<h3::H3Font*, ExtFont*> FontMap;
 
     bool Init();
 } // namespace H3FontExtension
