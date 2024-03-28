@@ -139,7 +139,7 @@ namespace H3FontExtension
                 // 如果取词的宽超过过了文本框的宽
                 // 强行断行，将词拆行显示直到词宽，
                 // 小于文本边框宽度
-                while (wordWidth > iBoxWidth)
+                while (wordWidth > iBoxWidth && *wordCursor != '\0')
                 {
                     for (UINT8 code = *wordCursor; *wordCursor != '\0'; code = *++wordCursor)
                     {
