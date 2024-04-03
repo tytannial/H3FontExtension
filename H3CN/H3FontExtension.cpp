@@ -653,10 +653,15 @@ namespace H3FontExtension
         return max(lineWidth, maxWidth);
     }
 
-    H3Font* __stdcall H3Font_Load(HiHook* h, LPCSTR name)
+    H3Font* __stdcall H3Font_Load(HiHook* h, char* name)
     {
-        auto font = FASTCALL_1(H3FontExt*, h->GetDefaultFunc(), name);
-        font->ExtData = &g_ExtFontTable[name];
+        auto fntName = _strlwr(name);
+        auto font = FASTCALL_1(H3FontExt*, h->GetDefaultFunc(), fntName);
+        font->ExtData = &g_ExtFontTable[fntName];
+        if (!font->ExtData)
+        {
+            font->ExtData = &g_ExtFontTable.at("medfont.fnt");
+        }
         return font;
     }
 
@@ -699,11 +704,12 @@ namespace H3FontExtension
             for (const auto& item : fontArr)
             {
                 const auto& fontCfg = item.as_table();
-                g_ExtFontTable[fontCfg->get("Name")->value_or("")] =
-                    ExtFont(fontCfg->get("Name")->value_or(""), fontCfg->get("ExtFont")->value_or(""),
-                            fontCfg->get("Height")->value_or(0), fontCfg->get("Width")->value_or(0),
-                            fontCfg->get("MarginLeft")->value_or(1), fontCfg->get("MarginRight")->value_or(0),
-                            fontCfg->get("MarginBottom")->value_or(0), fontCfg->get("DrawShadow")->value_or(true));
+                LPCSTR fntName = _strlwr((char*)fontCfg->get("Name")->value_or(""));
+                g_ExtFontTable[fntName] =
+                    ExtFont(fntName, fontCfg->get("ExtFont")->value_or(""), fontCfg->get("Height")->value_or(0),
+                            fontCfg->get("Width")->value_or(0), fontCfg->get("MarginLeft")->value_or(1),
+                            fontCfg->get("MarginRight")->value_or(0), fontCfg->get("MarginBottom")->value_or(0),
+                            fontCfg->get("DrawShadow")->value_or(true));
             }
 
             Cmpt_TextColor = config["General"]["TextColor"].value_or(true);
