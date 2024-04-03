@@ -2,10 +2,10 @@
 
 #include <unordered_map>
 
-#define _H3API_PATCHER_X86_
-
-#include <H3API.hpp>
 #include <toml.hpp>
+
+#define _H3API_PATCHER_X86_
+#include <H3API.hpp>
 
 static Patcher* _P;
 static PatcherInstance* _PI;
@@ -116,10 +116,13 @@ namespace H3FontExtension
         }
     };
 
-    // 汉字字体全局变量
-    static ExtFont* g_ExtFontTable[9];
+    struct H3FontExt : h3::H3Font
+    {
+        ExtFont* ExtData;
+    };
 
-    static std::unordered_map<h3::H3Font*, ExtFont*> FontMap;
+    // 汉字字体全局变量
+    static std::unordered_map<std::string, ExtFont> g_ExtFontTable;
 
     bool Init();
 } // namespace H3FontExtension

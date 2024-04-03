@@ -5,31 +5,6 @@ using namespace std;
 
 namespace H3FontExtension
 {
-    /**
-     * @brief 获取英文字体和汉字库字体映射
-     * @param pFont 英文字体
-     * @return 汉字字库字体
-     */
-    ExtFont* __fastcall GetMappedExtFont(H3Font* pFont)
-    {
-        auto bExtFontExisted = FontMap.contains(pFont);
-        if (bExtFontExisted)
-        {
-            return FontMap[pFont];
-        }
-
-        for (size_t i = 0; i < 9; i++)
-        {
-            if (!_stricmp(g_ExtFontTable[i]->ASCIIFontName.c_str(), pFont->GetName()))
-            {
-                FontMap[pFont] = g_ExtFontTable[i];
-                return g_ExtFontTable[i];
-            }
-        }
-
-        return g_ExtFontTable[1];
-    }
-
     DWORD __fastcall GetColor16(const H3BasePalette565& palette, int colorIdx)
     {
         return palette.color[colorIdx].Value();
@@ -62,9 +37,9 @@ namespace H3FontExtension
      * @param stringVector 拆分后的文本行容器
      * @return
      */
-    void __stdcall SplitTextIntoLines(H3Font* pFont, char* szText, const int iBoxWidth, vector<TextLineStruct>& lines)
+    void __stdcall SplitTextIntoLines(H3FontExt* pFont, char* szText, const int iBoxWidth,
+                                      vector<TextLineStruct>& lines)
     {
-        ExtFont* cFont = GetMappedExtFont(pFont);
         // 获取空格宽度
         int spaceWidth = pFont->width[32].span + pFont->width[32].leftMargin + pFont->width[32].rightMargin;
 
@@ -108,7 +83,7 @@ namespace H3FontExtension
                 {
                     if (wordWidth == 0)
                     {
-                        wordWidth = cFont->GlyphWidth;
+                        wordWidth = pFont->ExtData->GlyphWidth;
                         wordCursor += 2;
                     }
                     break;
@@ -203,8 +178,8 @@ namespace H3FontExtension
      * @param nShadowColor 阴影RGB颜色码
      * @return
      */
-    bool __fastcall H3Font_DrawChar(H3Font* pFont, ExtFont* cFont, H3LoadedPcx16* pOutputPcx, uint8_t cHiCode,
-                                    uint8_t cLoCode, int iX, int iY, DWORD uFontColor)
+    bool __fastcall H3Font_DrawChar(H3FontExt* pFont, H3LoadedPcx16* pOutputPcx, uint8_t cHiCode, uint8_t cLoCode,
+                                    int iX, int iY, DWORD uFontColor)
     {
         // 绘制英文文字
         if (cLoCode == 0)
@@ -239,6 +214,7 @@ namespace H3FontExtension
 
         // 绘制汉字文字
 
+        auto cFont = pFont->ExtData;
         // 左边距为1，对齐Y中轴
         int startX = iX + cFont->MarginLeft;
         int startY = iY;
@@ -284,7 +260,7 @@ namespace H3FontExtension
      * @param nFontStyle 字体风格（无用）
      * @return
      */
-    void __stdcall H3Font_DrawText(HiHook* h, H3Font* pFont, char* szText, H3LoadedPcx16* pPcx, int iX, int iY,
+    void __stdcall H3Font_DrawText(HiHook* h, H3FontExt* pFont, char* szText, H3LoadedPcx16* pPcx, int iX, int iY,
                                    int iBoxWidth, int iBoxHeight, uint32_t uColorIdx, uint32_t uAlignFlags,
                                    int iFontStyle)
     {
@@ -292,9 +268,6 @@ namespace H3FontExtension
         {
             return;
         }
-
-        // 汉字字体
-        ExtFont* cFont = GetMappedExtFont(pFont);
 
         // 拆行计算各行长短
         vector<TextLineStruct> textLines;
@@ -329,8 +302,8 @@ namespace H3FontExtension
             }
         }
 
-        int cfontShift = std::max(0, (pFont->height - cFont->Height) / 2);
-        int cfontHeight = std::max(pFont->height, cFont->Height);
+        int cfontShift = std::max(0, (pFont->height - pFont->ExtData->Height) / 2);
+        int cfontHeight = std::max(pFont->height, pFont->ExtData->Height);
 
         // 处理颜色代码
         uColorIdx = uColorIdx & 0x100 ? uColorIdx & 0xFE : uColorIdx + 9;
@@ -381,8 +354,8 @@ namespace H3FontExtension
 
                 if (code < DBCS_SECTION || code == 0xFF)
                 {
-                    H3Font_DrawChar(pFont, cFont, pPcx, code, 0, iX + startX + posMove,
-                                    iY + startY + rowIdx * cfontHeight, textColor);
+                    H3Font_DrawChar(pFont, pPcx, code, 0, iX + startX + posMove, iY + startY + rowIdx * cfontHeight,
+                                    textColor);
                     posMove += pFont->width[code].leftMargin + pFont->width[code].span + pFont->width[code].rightMargin;
                     continue;
                 }
@@ -390,9 +363,9 @@ namespace H3FontExtension
                 UINT8 extCode = p.pText[i + 1];
                 if (extCode && extCode != 0xFF && extCode >= DBCS_POSITION)
                 {
-                    H3Font_DrawChar(pFont, cFont, pPcx, code, extCode, iX + startX + posMove,
+                    H3Font_DrawChar(pFont, pPcx, code, extCode, iX + startX + posMove,
                                     iY + startY + cfontShift + rowIdx * cfontHeight, textColor);
-                    posMove += cFont->GlyphWidth;
+                    posMove += pFont->ExtData->GlyphWidth;
                     ++i;
                 }
             }
@@ -410,7 +383,7 @@ namespace H3FontExtension
      * @param stringVector 拆分后的文本行容器
      * @return
      */
-    void __stdcall H3Font_SplitTextIntoLines(HiHook* h, H3Font* pFont, char* szText, const int iBoxWidth,
+    void __stdcall H3Font_SplitTextIntoLines(HiHook* h, H3FontExt* pFont, char* szText, const int iBoxWidth,
                                              H3Vector<H3String>& lines)
     {
         vector<TextLineStruct> vlines;
@@ -428,7 +401,7 @@ namespace H3FontExtension
      * @param szText 文本段
      * @return 最长的一个词
      */
-    int __stdcall H3Font_GetWordWidth(HiHook* h, H3Font* pFont, char* szText)
+    int __stdcall H3Font_GetWordWidth(HiHook* h, H3FontExt* pFont, char* szText)
     {
         int strLength = strlen(szText);
         if (strLength <= 0)
@@ -479,10 +452,8 @@ namespace H3FontExtension
      * @param iBoxWidth
      * @return
      */
-    int __stdcall H3Font_GetLineWrapWidth(HiHook* h, H3Font* pFont, char* szText, int iBoxWidth)
+    int __stdcall H3Font_GetLineWrapWidth(HiHook* h, H3FontExt* pFont, char* szText, int iBoxWidth)
     {
-        ExtFont* cFont = GetMappedExtFont(pFont);
-
         int strLength = strlen(szText);
         if (strLength <= 0)
             return 0;
@@ -533,7 +504,7 @@ namespace H3FontExtension
                 UINT8 extCode = szText[i + 1];
                 if (extCode && extCode != 0xFF && extCode >= DBCS_POSITION)
                 {
-                    charWidth = cFont->GlyphWidth;
+                    charWidth = pFont->ExtData->GlyphWidth;
                     charSize = 2; // 双字节
                     ++i;          // 双字节跳过高位字符
                 }
@@ -562,10 +533,8 @@ namespace H3FontExtension
      * @param iWidth
      * @return
      */
-    int __stdcall H3Font_GetLineCount(HiHook* h, H3Font* pFont, char* szText, int iBoxWidth)
+    int __stdcall H3Font_GetLineCount(HiHook* h, H3FontExt* pFont, char* szText, int iBoxWidth)
     {
-        ExtFont* cFont = GetMappedExtFont(pFont);
-
         int strLength = strlen(szText);
         if (strLength <= 0)
             return 0;
@@ -616,7 +585,7 @@ namespace H3FontExtension
                 UINT8 extCode = szText[i + 1];
                 if (extCode && extCode != 0xFF && extCode >= DBCS_POSITION)
                 {
-                    charWidth = cFont->GlyphWidth;
+                    charWidth = pFont->ExtData->GlyphWidth;
                     charSize = 2; // 双字节
                     ++i;          // 双字节跳过高位字符
                 }
@@ -643,10 +612,8 @@ namespace H3FontExtension
      * @param szText
      * @return
      */
-    int __stdcall H3Font_GetLineWidth(HiHook* h, H3Font* pFont, char* szText)
+    int __stdcall H3Font_GetLineWidth(HiHook* h, H3FontExt* pFont, char* szText)
     {
-        ExtFont* cFont = GetMappedExtFont(pFont);
-
         int strLength = strlen(szText);
         if (strLength <= 0)
             return 0;
@@ -682,11 +649,18 @@ namespace H3FontExtension
                 continue;
             }
 
-            lineWidth += cFont->GlyphWidth;
+            lineWidth += pFont->ExtData->GlyphWidth;
             ++i;
         }
 
         return max(lineWidth, maxWidth);
+    }
+
+    H3Font* __stdcall H3Font_Load(HiHook* h, LPCSTR name)
+    {
+        auto font = FASTCALL_1(H3FontExt*, h->GetDefaultFunc(), name);
+        font->ExtData = &g_ExtFontTable[name];
+        return font;
     }
 
     void __stdcall Main_DirectDrawInit_Hook(HiHook* h)
@@ -715,7 +689,7 @@ namespace H3FontExtension
 #ifndef NDEBUG
         MessageBoxW(H3Hwnd::Get(), L"注入成功", L"调试中", 0);
 #endif
-
+        // 获取代码修补库
         _P = GetPatcher();
         _PI = _P->CreateInstance("HD.Plugin.H3FontExtension");
 
@@ -725,15 +699,14 @@ namespace H3FontExtension
             auto config = toml::parse_file("H3CN.toml");
 
             toml::array fontArr = *config["Fonts"].as_array();
-
-            for (int i = 0; i < 9; ++i)
+            for (const auto& item : fontArr)
             {
-                const auto& font = fontArr[i].as_table();
-                g_ExtFontTable[i] =
-                    new ExtFont(font->get("Name")->value_or(""), font->get("ExtFont")->value_or(""),
-                                font->get("Height")->value_or(0), font->get("Width")->value_or(0),
-                                font->get("MarginLeft")->value_or(0), font->get("MarginRight")->value_or(0),
-                                font->get("MarginBottom")->value_or(2), font->get("DrawShadow")->value_or(true));
+                const auto& fontCfg = item.as_table();
+                g_ExtFontTable[fontCfg->get("Name")->value_or("")] =
+                    ExtFont(fontCfg->get("Name")->value_or(""), fontCfg->get("ExtFont")->value_or(""),
+                            fontCfg->get("Height")->value_or(0), fontCfg->get("Width")->value_or(0),
+                            fontCfg->get("MarginLeft")->value_or(1), fontCfg->get("MarginRight")->value_or(0),
+                            fontCfg->get("MarginBottom")->value_or(0), fontCfg->get("DrawShadow")->value_or(true));
             }
 
             Cmpt_TextColor = config["General"]["TextColor"].value_or(true);
@@ -752,15 +725,23 @@ namespace H3FontExtension
         }
 
         // 注入函数劫持
-        _PI->WriteHiHook(0x4B51F0, SPLICE_, THISCALL_, H3Font_DrawText);
+
+        // 挂载一个扩展函数在游戏DDraw初始化的位置 用于检测色彩模式
+        _PI->WriteHiHook(0x601AB0, SPLICE_, FASTCALL_, EXTENDED_, Main_DirectDrawInit_Hook);
+
+        // 扩展字体申请的堆大小，额外增加4bytes空间
+        _PI->WriteDword(0x55B9CE + 1, H3FontExt::SIZE + 4);
+
+        // 字体加载后填入拓展字符区
+        _PI->WriteHiHook(0x55BD10, SPLICE_, THISCALL_, EXTENDED_, H3Font_Load);
+
+        // 字符绘制和文本框宽度计算
+        _PI->WriteHiHook(0x4B51F0, SPLICE_, THISCALL_, H3Font_DrawText);           // 文本绘制
         _PI->WriteHiHook(0x4B5580, SPLICE_, THISCALL_, H3Font_GetLineCount);       // 计算文本的行数
         _PI->WriteHiHook(0x4B56F0, SPLICE_, THISCALL_, H3Font_GetLineWidth);       // 最长文本行长度
         _PI->WriteHiHook(0x4B5770, SPLICE_, THISCALL_, H3Font_GetWordWidth);       // 最长单词长度
         _PI->WriteHiHook(0x4B57E0, SPLICE_, THISCALL_, H3Font_GetLineWrapWidth);   // 最长换行长度
         _PI->WriteHiHook(0x4B58F0, SPLICE_, THISCALL_, H3Font_SplitTextIntoLines); // 拆分文本行
-
-        // 挂载一个扩展函数在游戏DDraw初始化的位置 用于检测色彩模式
-        _PI->WriteHiHook(0x601AB0, SPLICE_, FASTCALL_, EXTENDED_, Main_DirectDrawInit_Hook);
 
         return true;
     }
