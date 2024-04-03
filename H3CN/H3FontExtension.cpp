@@ -229,16 +229,13 @@ namespace H3FontExtension
                 {
                     continue;
                 }
+                DrawPixcel(pOutputPcx->GetRow(startY + rowIdx), startX + colIdx, uFontColor);
 
-                auto rgbFontColor = H3ARGB888(uFontColor);
-                rgbFontColor.Darken(-alpha);
-                DrawPixcel(pOutputPcx->GetRow(startY + rowIdx), startX + colIdx, rgbFontColor.Value());
                 // 是否绘制阴影
                 if (!cFont->DrawShadow)
                 {
                     continue;
                 }
-                // 绘制阴影
                 DrawPixcel(pOutputPcx->GetRow(startY + rowIdx + 1), startX + colIdx + 1, ShadowColor);
             }
         }
