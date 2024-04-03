@@ -24,7 +24,7 @@ namespace H3FontExtension
      * 0xA440-0xC67E：常用汉字，先按笔划再按部首排序
      */
     constexpr uint8_t DBCS_SECTION = 0x81;
-    constexpr uint8_t DBCS_POSITION = 0x41;
+    constexpr uint8_t DBCS_POSITION = 0x40;
 
     // 字符阴影颜色
     constexpr uint16_t ShadowColor = 0;
@@ -66,7 +66,7 @@ namespace H3FontExtension
         }
 
         /// <summary>
-        /// 汉字结构体 H3中文: 0x40CF18 0x5863B0
+        /// 汉字结构体
         /// </summary>
         /// <param name="lpFileName"></param>
         /// <param name="nHeight"></param>
@@ -104,14 +104,15 @@ namespace H3FontExtension
         }
 
         /**
-         * @brief 读取HZK字库字符画 H3中文: 0x4062B2 0x5325E0
+         * @brief 字体字符串指针
          * @param section 区码
          * @param position 位码
          * @return 汉字库字符指针
          */
         inline PUINT8 __fastcall GetHzkCharacterPcxPointer(UINT8 section, UINT8 position)
         {
-            return this->FontFileBuffer + this->Width * this->Height * ((section - 0x81) * 0xBF + position - 0x40);
+            return this->FontFileBuffer +
+                   this->Width * this->Height * ((section - DBCS_SECTION) * 0xBF + position - DBCS_POSITION);
         }
     };
 

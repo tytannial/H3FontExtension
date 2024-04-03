@@ -460,7 +460,6 @@ namespace H3FontExtension
 
             // 双字节码
             UINT8 extCode = szText[i + 1];
-            // GBK范围0x81-0xFE，位码0x41-0xFE
             if (extCode || extCode == 0xFF || extCode < DBCS_POSITION)
             {
                 continue;
@@ -532,7 +531,6 @@ namespace H3FontExtension
             {
                 // 单字节码
                 UINT8 extCode = szText[i + 1];
-                // GBK范围0x81-0xFE，位码0x41-0xFE
                 if (extCode && extCode != 0xFF && extCode >= DBCS_POSITION)
                 {
                     charWidth = cFont->GlyphWidth;
@@ -616,7 +614,6 @@ namespace H3FontExtension
             {
                 // 双字节码
                 UINT8 extCode = szText[i + 1];
-                // GBK范围0x81-0xFE，位码0x41-0xFE
                 if (extCode && extCode != 0xFF && extCode >= DBCS_POSITION)
                 {
                     charWidth = cFont->GlyphWidth;
@@ -680,8 +677,7 @@ namespace H3FontExtension
 
             // 获取位码
             UINT8 extCode = szText[i + 1];
-            // GBK范围0x81 - 0xFE，位码0x41-0xFE
-            if (!extCode || extCode == 0xFF || extCode < DBCS_POSITION) // GBK 0xFF位码为空
+            if (!extCode || extCode == 0xFF || extCode < DBCS_POSITION)
             {
                 continue;
             }
