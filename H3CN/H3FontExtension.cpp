@@ -5,24 +5,24 @@ using namespace std;
 
 namespace H3FontExtension
 {
-    DWORD __fastcall GetColor16(const H3BasePalette565& palette, int colorIdx)
+    static DWORD __fastcall GetColor16(const H3BasePalette565& palette, int colorIdx)
     {
         return palette.color[colorIdx].Value();
     }
 
-    DWORD __fastcall GetColor32(const H3BasePalette565& palette, int colorIdx)
+    static DWORD __fastcall GetColor32(const H3BasePalette565& palette, int colorIdx)
     {
         return palette.palette32->colors[colorIdx];
     }
 
     DWORD(__fastcall* GetColor)(const H3BasePalette565& palette, int colorIdx);
 
-    void __fastcall DrawPixcel16(const PUINT8 rowBuffer, int col, DWORD color)
+    static void __fastcall DrawPixcel16(const PUINT8 rowBuffer, int col, DWORD color)
     {
         *((WORD*)rowBuffer + col) = (WORD)color;
     }
 
-    void __fastcall DrawPixcel32(const PUINT8 rowBuffer, int col, DWORD color)
+    static void __fastcall DrawPixcel32(const PUINT8 rowBuffer, int col, DWORD color)
     {
         *((DWORD*)rowBuffer + col) = color;
     }
