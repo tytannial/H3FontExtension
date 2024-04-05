@@ -41,16 +41,16 @@ namespace H3FontExtension
                                              vector<TextLineStruct>& lines)
     {
         // 获取空格宽度
-        UINT32 spaceWidth = pFont->width[32].span + pFont->width[32].leftMargin + pFont->width[32].rightMargin;
+        int spaceWidth = pFont->width[32].span + pFont->width[32].leftMargin + pFont->width[32].rightMargin;
 
-        UINT32 lineWidth = 0;
+        int lineWidth = 0;
         std::string strBuffer;
 
         while (*szText)
         {
             // 行首空格和换行符处理
-            UINT32 blankWidth = 0;
-            UINT32 blankCount = 0;
+            int blankWidth = 0;
+            int blankCount = 0;
             for (UINT8 code = *szText; code == ' ' || code == '\n'; code = *++szText)
             {
                 if (code == ' ')
@@ -71,7 +71,7 @@ namespace H3FontExtension
             // 通过空格或换行符取词，一个汉字算作一个词
             int wordWidth = 0;
             char* wordCursor = szText;
-            for (UINT8 code = *wordCursor; *wordCursor != '\0'; code = *++wordCursor)
+            for (UINT8 code = *wordCursor; code; code = *++wordCursor)
             {
                 if (code == ' ' || code == '\n')
                 {
@@ -341,7 +341,7 @@ namespace H3FontExtension
             }
 
             int posMove = 0;
-            for (int i = 0; i < p.Text.length(); ++i)
+            for (size_t i = 0; i < p.Text.length(); ++i)
             {
                 uint8_t code = p.Text[i];
 
@@ -398,9 +398,9 @@ namespace H3FontExtension
 
         vector<TextLineStruct> vlines;
         SplitTextIntoLines(pFont, szText, iBoxWidth, vlines);
-        for (auto& line : vlines)
+        for (const auto& line : vlines)
         {
-            lines.Add(line.Text.c_str());
+            lines.Add(H3String(line.Text.c_str(), line.Text.length()));
         }
     }
 
@@ -728,9 +728,8 @@ namespace H3FontExtension
             for (const auto& item : fontArr)
             {
                 const auto& fontCfg = item.as_table();
-                LPCSTR fntName = _strlwr((char*)fontCfg->get("Name")->value_or(""));
-                g_ExtFontTable[fntName] =
-                    ExtFont(fntName, fontCfg->get("ExtFont")->value_or(""), fontCfg->get("Height")->value_or(0),
+                g_ExtFontTable[_strlwr((char*)fontCfg->get("Name")->value_or(""))] =
+                    ExtFont(fontCfg->get("ExtFont")->value_or(""), fontCfg->get("Height")->value_or(0),
                             fontCfg->get("Width")->value_or(0), fontCfg->get("MarginLeft")->value_or(1),
                             fontCfg->get("MarginRight")->value_or(0), fontCfg->get("MarginBottom")->value_or(0),
                             fontCfg->get("DrawShadow")->value_or(true));

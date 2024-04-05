@@ -40,15 +40,14 @@ namespace H3FontExtension
     struct TextLineStruct
     {
         std::string Text;
-        UINT32 lineWidth;
+        int lineWidth;
     };
 
     struct ExtFont
     {
     public:
-        std::string ASCIIFontName;
         PUINT8 FontFileBuffer = nullptr;
-        UINT8 Height = 0;
+        INT8 Height = 0;
         int Width = 0;
         int MarginLeft = 0;
         int MarginRight = 0;
@@ -60,11 +59,10 @@ namespace H3FontExtension
         {
         }
 
-        ExtFont(LPCSTR lpASCIIFontName, LPCSTR lpFileName, int iHeight, int iWidth, int iMarginLeft, int iMarginRight,
-                int iMarginBottom, bool bDrawShadow)
+        ExtFont(LPCSTR lpFileName, int iHeight, int iWidth, int iMarginLeft, int iMarginRight, int iMarginBottom,
+                bool bDrawShadow)
         {
-            LoadHzhFont(lpASCIIFontName, lpFileName, iHeight, iWidth, iMarginLeft, iMarginRight, iMarginBottom,
-                        bDrawShadow);
+            LoadHzhFont(lpFileName, iHeight, iWidth, iMarginLeft, iMarginRight, iMarginBottom, bDrawShadow);
         }
 
         /// <summary>
@@ -74,8 +72,8 @@ namespace H3FontExtension
         /// <param name="nHeight"></param>
         /// <param name="nWidth"></param>
         /// <returns></returns>
-        bool __fastcall LoadHzhFont(LPCSTR lpASCIIFontName, LPCSTR lpFileName, int iHeight, int iWidth, int iMarginLeft,
-                                    int iMarginRight, int iMarginBottom, bool bDrawShadow)
+        bool __fastcall LoadHzhFont(LPCSTR lpFileName, int iHeight, int iWidth, int iMarginLeft, int iMarginRight,
+                                    int iMarginBottom, bool bDrawShadow)
         {
             std::ifstream file(lpFileName, std::ios::in | std::ios::binary);
 
@@ -85,20 +83,17 @@ namespace H3FontExtension
                 return false;
             }
 
-            file.seekg(0, std::ios::end);
-            std::streampos fileSize = file.tellg();
-
-            this->DrawShadow = bDrawShadow;
-            this->MarginRight = iMarginRight;
-            this->MarginLeft = iMarginLeft;
-            this->MarginBottom = iMarginBottom;
-            this->Width = iWidth;
             this->Height = iHeight;
-            this->ASCIIFontName = std::string(lpASCIIFontName);
-            this->FontFileBuffer = new UINT8[fileSize];
-
+            this->Width = iWidth;
+            this->MarginLeft = iMarginLeft;
+            this->MarginRight = iMarginRight;
+            this->MarginBottom = iMarginBottom;
+            this->DrawShadow = bDrawShadow;
             this->GlyphWidth = iMarginLeft + iWidth + iMarginRight;
 
+            file.seekg(0, std::ios::end);
+            std::streampos fileSize = file.tellg();
+            this->FontFileBuffer = new UINT8[fileSize];
             file.seekg(0, std::ios::beg);
             file.read((char*)this->FontFileBuffer, fileSize);
 
