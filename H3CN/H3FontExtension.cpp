@@ -41,16 +41,16 @@ namespace H3FontExtension
                                       vector<TextLineStruct>& lines)
     {
         // 获取空格宽度
-        int spaceWidth = pFont->width[32].span + pFont->width[32].leftMargin + pFont->width[32].rightMargin;
+        UINT32 spaceWidth = pFont->width[32].span + pFont->width[32].leftMargin + pFont->width[32].rightMargin;
 
-        int lineWidth = 0;
-        H3String strBuffer;
+        UINT32 lineWidth = 0;
+        std::string strBuffer;
 
         while (*szText)
         {
             // 行首空格和换行符处理
-            int blankWidth = 0;
-            int blankCount = 0;
+            UINT32 blankWidth = 0;
+            UINT32 blankCount = 0;
             for (UINT8 code = *szText; code == ' ' || code == '\n'; code = *++szText)
             {
                 if (code == ' ')
@@ -60,8 +60,8 @@ namespace H3FontExtension
                     continue;
                 }
 
-                lines.push_back(TextLineStruct{strBuffer, strBuffer.Length(), lineWidth});
-                strBuffer = H3String();
+                lines.push_back(TextLineStruct{strBuffer, lineWidth});
+                strBuffer.clear();
                 lineWidth = 0;
                 blankWidth = 0;
                 blankCount = 0;
@@ -104,8 +104,8 @@ namespace H3FontExtension
                 // 判断句宽进行换行
                 if (lineWidth > 0)
                 {
-                    lines.push_back(TextLineStruct{strBuffer, strBuffer.Length(), lineWidth});
-                    strBuffer = H3String();
+                    lines.push_back(TextLineStruct{strBuffer, lineWidth});
+                    strBuffer.clear();
                     lineWidth = 0;
                 }
                 blankCount = 0; // 移除行首空格
@@ -130,24 +130,24 @@ namespace H3FontExtension
                             break;
                         }
 
-                        strBuffer.Append(code);
+                        strBuffer.push_back(code);
                         lineWidth += charWidth;
                         wordWidth -= charWidth;
                     };
 
-                    lines.push_back(TextLineStruct{strBuffer, strBuffer.Length(), lineWidth});
+                    lines.push_back(TextLineStruct{strBuffer, lineWidth});
+                    strBuffer.clear();
                     lineWidth = 0;
-                    strBuffer = H3String();
                 }
             }
 
             // 插入词前空格
-            strBuffer.Insert(blankCount, ' ');
+            strBuffer.insert(0, blankCount, ' ');
 
             // 将词填入句末
             if (szText != wordCursor)
             {
-                strBuffer.Append(szText, wordCursor - szText);
+                strBuffer.append(szText, wordCursor - szText);
                 szText = wordCursor;
             };
 
@@ -160,8 +160,10 @@ namespace H3FontExtension
         // 文本剩余单独成句
         if (lineWidth > 0)
         {
-            lines.push_back(TextLineStruct{strBuffer, strBuffer.Length(), lineWidth});
+            lines.push_back(TextLineStruct{strBuffer, lineWidth});
         }
+
+        strBuffer.clear();
     }
 
     /**
@@ -311,6 +313,12 @@ namespace H3FontExtension
         int rowIdx = 0;
         for (const TextLineStruct& p : textLines)
         {
+            if (p.lineWidth == 0)
+            {
+                ++rowIdx;
+                continue;
+            }
+
             // 当前行绘制后溢出文本框则不绘制
             if (startY + (rowIdx + 1) * pFont->height > iBoxHeight)
             {
@@ -325,17 +333,17 @@ namespace H3FontExtension
                 startX = 0;
                 break;
             case 1:
-                startX = (iBoxWidth - p.iWidth) / 2;
+                startX = (iBoxWidth - p.lineWidth) / 2;
                 break;
             case 2:
-                startX = iBoxWidth - p.iWidth;
+                startX = iBoxWidth - p.lineWidth;
                 break;
             }
 
             int posMove = 0;
-            for (int i = 0; i < p.iLength; ++i)
+            for (int i = 0; i < p.Text.length(); ++i)
             {
-                uint8_t code = p.pText[i];
+                uint8_t code = p.Text[i];
 
                 if (code == '{')
                 {
@@ -357,7 +365,7 @@ namespace H3FontExtension
                     continue;
                 }
 
-                UINT8 extCode = p.pText[i + 1];
+                UINT8 extCode = p.Text[i + 1];
                 if (extCode && extCode != 0xFF && extCode >= DBCS_POSITION)
                 {
                     H3Font_DrawChar(pFont, pPcx, code, extCode, iX + startX + posMove,
@@ -383,11 +391,16 @@ namespace H3FontExtension
     void __stdcall H3Font_SplitTextIntoLines(HiHook* h, H3FontExt* pFont, char* szText, const int iBoxWidth,
                                              H3Vector<H3String>& lines)
     {
+        if (!strlen(szText))
+        {
+            return;
+        }
+
         vector<TextLineStruct> vlines;
         SplitTextIntoLines(pFont, szText, iBoxWidth, vlines);
         for (auto& line : vlines)
         {
-            lines.Add(line.pText);
+            lines.Add(line.Text.c_str());
         }
     }
 
