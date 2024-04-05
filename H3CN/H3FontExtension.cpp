@@ -30,15 +30,15 @@ namespace H3FontExtension
     void(__fastcall* DrawPixcel)(const PUINT8 rowBuffer, int col, DWORD color);
 
     /**
-     * @brief 拆分文本为行 H3Complete: 0x4B58F0
+     * @brief 拆分文本为行
      * @param pFont ASCII字体
      * @param pStr 文本字符串
      * @param nWidth 文本框宽度
      * @param stringVector 拆分后的文本行容器
      * @return
      */
-    void __stdcall SplitTextIntoLines(H3FontExt* pFont, char* szText, const int iBoxWidth,
-                                      vector<TextLineStruct>& lines)
+    static void __stdcall SplitTextIntoLines(H3FontExt* pFont, char* szText, const int iBoxWidth,
+                                             vector<TextLineStruct>& lines)
     {
         // 获取空格宽度
         UINT32 spaceWidth = pFont->width[32].span + pFont->width[32].leftMargin + pFont->width[32].rightMargin;
@@ -167,7 +167,7 @@ namespace H3FontExtension
     }
 
     /**
-     * @brief 绘制文字 H3中文: 0x532230 0x40C5B3
+     * @brief 绘制字符
      * @tparam T 彩色模式类型 仅支持 16位色、32位色
      * @param pFont ASCII字体
      * @param cFont 扩展字体
@@ -180,8 +180,8 @@ namespace H3FontExtension
      * @param nShadowColor 阴影RGB颜色码
      * @return
      */
-    bool __fastcall H3Font_DrawChar(H3FontExt* pFont, H3LoadedPcx16* pOutputPcx, uint8_t cHiCode, uint8_t cLoCode,
-                                    int iX, int iY, DWORD uFontColor)
+    static bool __fastcall H3Font_DrawChar(H3FontExt* pFont, H3LoadedPcx16* pOutputPcx, uint8_t cHiCode,
+                                           uint8_t cLoCode, int iX, int iY, DWORD uFontColor)
     {
         // 绘制英文文字
         if (cLoCode == 0)
@@ -246,7 +246,7 @@ namespace H3FontExtension
     }
 
     /**
-     * @brief 绘制文字 H3中文: 0x4077D4 0x532BC0
+     * @brief 绘制文本行
      * @param pFont ASCII字体
      * @param pStr 文本字符串
      * @param pPcx 图像输出
@@ -259,9 +259,9 @@ namespace H3FontExtension
      * @param nFontStyle 字体风格（无用）
      * @return
      */
-    void __stdcall H3Font_DrawText(HiHook* h, H3FontExt* pFont, char* szText, H3LoadedPcx16* pPcx, int iX, int iY,
-                                   int iBoxWidth, int iBoxHeight, uint32_t uColorIdx, uint32_t uAlignFlags,
-                                   int iFontStyle)
+    static void __stdcall H3Font_DrawText(HiHook* h, H3FontExt* pFont, char* szText, H3LoadedPcx16* pPcx, int iX,
+                                          int iY, int iBoxWidth, int iBoxHeight, uint32_t uColorIdx,
+                                          uint32_t uAlignFlags, int iFontStyle)
     {
         if (!*szText || iBoxWidth == 0)
         {
@@ -381,15 +381,15 @@ namespace H3FontExtension
     }
 
     /**
-     * @brief 拆分文本为行 H3Complete: 0x4B58F0
+     * @brief 拆分文本为行
      * @param pFont ASCII字体
      * @param pStr 文本字符串
      * @param nWidth 文本框宽度
      * @param stringVector 拆分后的文本行容器
      * @return
      */
-    void __stdcall H3Font_SplitTextIntoLines(HiHook* h, H3FontExt* pFont, char* szText, const int iBoxWidth,
-                                             H3Vector<H3String>& lines)
+    static void __stdcall H3Font_SplitTextIntoLines(HiHook* h, H3FontExt* pFont, char* szText, const int iBoxWidth,
+                                                    H3Vector<H3String>& lines)
     {
         if (!strlen(szText))
         {
@@ -411,7 +411,7 @@ namespace H3FontExtension
      * @param szText 文本段
      * @return 最长的一个词
      */
-    int __stdcall H3Font_GetWordWidth(HiHook* h, H3FontExt* pFont, char* szText)
+    static int __stdcall H3Font_GetWordWidth(HiHook* h, H3FontExt* pFont, char* szText)
     {
         int strLength = strlen(szText);
         if (strLength <= 0)
@@ -462,7 +462,7 @@ namespace H3FontExtension
      * @param iBoxWidth
      * @return
      */
-    int __stdcall H3Font_GetLineWrapWidth(HiHook* h, H3FontExt* pFont, char* szText, int iBoxWidth)
+    static int __stdcall H3Font_GetLineWrapWidth(HiHook* h, H3FontExt* pFont, char* szText, int iBoxWidth)
     {
         int strLength = strlen(szText);
         if (strLength <= 0)
@@ -543,7 +543,7 @@ namespace H3FontExtension
      * @param iWidth
      * @return
      */
-    int __stdcall H3Font_GetLineCount(HiHook* h, H3FontExt* pFont, char* szText, int iBoxWidth)
+    static int __stdcall H3Font_GetLineCount(HiHook* h, H3FontExt* pFont, char* szText, int iBoxWidth)
     {
         int strLength = strlen(szText);
         if (strLength <= 0)
@@ -622,7 +622,7 @@ namespace H3FontExtension
      * @param szText
      * @return
      */
-    int __stdcall H3Font_GetLineWidth(HiHook* h, H3FontExt* pFont, char* szText)
+    static int __stdcall H3Font_GetLineWidth(HiHook* h, H3FontExt* pFont, char* szText)
     {
         int strLength = strlen(szText);
         if (strLength <= 0)
@@ -666,7 +666,13 @@ namespace H3FontExtension
         return max(lineWidth, maxWidth);
     }
 
-    H3Font* __stdcall H3Font_Load(HiHook* h, char* name)
+    /**
+     * @brief 字体加载拓展
+     * @param h
+     * @param name 字体名称
+     * @return
+     */
+    static H3Font* __stdcall H3Font_Load_Hook(HiHook* h, char* name)
     {
         auto fntName = _strlwr(name);
         auto font = FASTCALL_1(H3FontExt*, h->GetDefaultFunc(), fntName);
@@ -678,7 +684,12 @@ namespace H3FontExtension
         return font;
     }
 
-    void __stdcall Main_DirectDrawInit_Hook(HiHook* h)
+    /**
+     * @brief DDraw初始化拓展
+     * @param h
+     * @return
+     */
+    static void __stdcall Main_DirectDrawInit_Hook(HiHook* h)
     {
         FASTCALL_0(void, h->GetDefaultFunc());
 
@@ -749,7 +760,7 @@ namespace H3FontExtension
         _PI->WriteDword(0x55B9CE + 1, H3FontExt::SIZE + 4);
 
         // 字体加载后填入拓展字符区
-        _PI->WriteHiHook(0x55BD10, SPLICE_, THISCALL_, EXTENDED_, H3Font_Load);
+        _PI->WriteHiHook(0x55BD10, SPLICE_, THISCALL_, EXTENDED_, H3Font_Load_Hook);
 
         // 字符绘制和文本框宽度计算
         _PI->WriteHiHook(0x4B51F0, SPLICE_, THISCALL_, H3Font_DrawText);           // 文本绘制

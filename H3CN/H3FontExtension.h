@@ -23,7 +23,10 @@ namespace H3FontExtension
      * 0xA140-0xA3BF：标点符号、希腊字母及特殊符号
      * 0xA440-0xC67E：常用汉字，先按笔划再按部首排序
      */
+
+    // 双字节区码
     constexpr uint8_t DBCS_SECTION = 0x81;
+    // 双字节位码
     constexpr uint8_t DBCS_POSITION = 0x40;
 
     // 字符阴影颜色
