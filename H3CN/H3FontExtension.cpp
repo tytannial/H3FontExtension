@@ -141,8 +141,8 @@ namespace H3FontExtension
                 }
             }
 
-            // 插入词前空格
-            strBuffer.insert(0, blankCount, ' ');
+            // 插入词后空格
+            strBuffer.append(blankCount, ' ');
 
             // 将词填入句末
             if (szText != wordCursor)
