@@ -35,7 +35,7 @@ namespace H3FontExtension
     static bool Cmpt_TextColor = true;
     static toml::table TextColorMap;
 
-    static int BoxWidthModify = 0;
+    static int BoxWidthMin = 0;
     static int BoxWidthMax = 0;
 
     struct TextLineStruct

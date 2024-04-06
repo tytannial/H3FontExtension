@@ -451,7 +451,7 @@ namespace H3FontExtension
             break;
         }
 
-        return min(max(wordWidth, maxWidth) + BoxWidthModify, BoxWidthMax);
+        return clamp(max(wordWidth, maxWidth), BoxWidthMin, BoxWidthMax);
     }
 
     /**
@@ -705,10 +705,9 @@ namespace H3FontExtension
             DrawPixcel = DrawPixcel16;
         }
 
-        if (BoxWidthMax == -1)
-        {
-            BoxWidthMax = H3GameWidth::Get() / 2 - 32 * 2;
-        }
+        auto maxWidth = H3GameWidth::Get() - 64 * 2;
+        BoxWidthMax < 0 ? BoxWidthMax = maxWidth : BoxWidthMax = clamp(BoxWidthMax, 256, maxWidth);
+        BoxWidthMin < 0 ? BoxWidthMin = maxWidth : BoxWidthMin = clamp(BoxWidthMin, 256, BoxWidthMax);
     }
 
     /**
@@ -748,7 +747,7 @@ namespace H3FontExtension
             }
 
             // 文本行宽计算规则限制
-            BoxWidthModify = config["MessageBox"]["BoxWidthModify"].value_or(0);
+            BoxWidthMin = config["MessageBox"]["BoxWidthMin"].value_or(0);
             BoxWidthMax = config["MessageBox"]["BoxWidthMax"].value_or(-1);
         }
         catch (const std::exception&)
