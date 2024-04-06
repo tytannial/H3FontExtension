@@ -415,6 +415,7 @@ namespace H3FontExtension
 
                 if (code == '{')
                 {
+                    textColor = GetColor(pFont->palette, uColorIdx + 1);
                     if (IsTextColorEnable)
                     {
                         if (p.Text[i + 1] == '~')
@@ -422,10 +423,6 @@ namespace H3FontExtension
                             isColorCodeFound = true;
                             ++i;
                         }
-                    }
-                    else
-                    {
-                        textColor = GetColor(pFont->palette, uColorIdx + 1);
                     }
                     continue;
                 }
