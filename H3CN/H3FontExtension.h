@@ -32,7 +32,7 @@ namespace H3FontExtension
     // 字符阴影颜色
     constexpr uint16_t ShadowColor = 0;
 
-    static bool Cmpt_TextColor = true;
+    static bool IsTextColorEnable = true;
     static toml::table TextColorMap;
 
     static int BoxWidthMin = 0;

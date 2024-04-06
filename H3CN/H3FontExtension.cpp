@@ -69,6 +69,7 @@ namespace H3FontExtension
             }
 
             // 通过空格或换行符取词，一个汉字算作一个词
+            bool isColorCodeFound = false;
             int wordWidth = 0;
             char* wordCursor = szText;
             for (UINT8 code = *wordCursor; code; code = *++wordCursor)
@@ -91,6 +92,22 @@ namespace H3FontExtension
 
                 // BUGFIX: 原版里词宽计算了颜色字符
                 if (code == '{' || code == '}')
+                {
+                    if (IsTextColorEnable)
+                    {
+                        if (code == '{' && extCode == '~')
+                        {
+                            isColorCodeFound = true;
+                        }
+                        else
+                        {
+                            isColorCodeFound = false;
+                        }
+                    }
+                    continue;
+                }
+
+                if (IsTextColorEnable && isColorCodeFound)
                 {
                     continue;
                 }
@@ -310,6 +327,9 @@ namespace H3FontExtension
         DWORD defaultColor = GetColor(pFont->palette, uColorIdx);
         DWORD textColor = defaultColor;
 
+        bool isColorCodeFound = false;
+        std::string colorCode;
+
         int rowIdx = 0;
         for (const TextLineStruct& p : textLines)
         {
@@ -345,15 +365,68 @@ namespace H3FontExtension
             {
                 uint8_t code = p.Text[i];
 
-                if (code == '{')
+                if (code == '}')
                 {
-                    textColor = GetColor(pFont->palette, uColorIdx + 1);
+                    if (IsTextColorEnable)
+                    {
+                        if (isColorCodeFound)
+                        {
+                            isColorCodeFound = false;
+                            if (colorCode.length() > 0)
+                            {
+                                if (colorCode[0] == '#')
+                                {
+                                    auto rst = std::from_chars(colorCode.data(), colorCode.data() + colorCode.length(),
+                                                               textColor, 16);
+                                    if (rst.ec != std::errc())
+                                    {
+                                        textColor = defaultColor;
+                                    }
+                                }
+                                else
+                                {
+                                    textColor = TextColorMap[colorCode].value_or(defaultColor);
+                                    if (textColor != defaultColor && H3BitMode::Get() != 4)
+                                    {
+                                        textColor = H3RGB565(textColor).Value();
+                                    }
+                                }
+                            }
+                            continue;
+                        }
+                        else
+                        {
+                            textColor = defaultColor;
+                            colorCode.clear();
+                        }
+                    }
+                    else
+                    {
+                        textColor = defaultColor;
+                    }
                     continue;
                 }
 
-                if (code == '}')
+                if (IsTextColorEnable && isColorCodeFound)
                 {
-                    textColor = defaultColor;
+                    colorCode.push_back(code);
+                    continue;
+                }
+
+                if (code == '{')
+                {
+                    if (IsTextColorEnable)
+                    {
+                        if (p.Text[i + 1] == '~')
+                        {
+                            isColorCodeFound = true;
+                            ++i;
+                        }
+                    }
+                    else
+                    {
+                        textColor = GetColor(pFont->palette, uColorIdx + 1);
+                    }
                     continue;
                 }
 
@@ -739,8 +812,8 @@ namespace H3FontExtension
                             fontCfg->get("DrawShadow")->value_or(true));
             }
 
-            Cmpt_TextColor = config["General"]["TextColor"].value_or(true);
-            if (Cmpt_TextColor)
+            IsTextColorEnable = config["General"]["TextColor"].value_or(true);
+            if (IsTextColorEnable)
             {
                 auto configColor = toml::parse_file("H3CN.TextColor.toml");
                 TextColorMap = *configColor["TextColor"].as_table();
