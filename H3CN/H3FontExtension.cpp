@@ -5,6 +5,12 @@ using namespace std;
 
 namespace H3FontExtension
 {
+    constexpr inline WORD RGB888toRGB565(DWORD color)
+    {
+        return ((((color >> 16) & 0xFF) >> 3) & 0x1F) << 11 | ((((color >> 8) & 0xFF) >> 2) & 0x3F) << 5 |
+               (((color & 0xFF) >> 3) & 0x1F);
+    }
+
     static DWORD __fastcall GetColor16(const H3BasePalette565& palette, int colorIdx)
     {
         return palette.color[colorIdx].Value();
@@ -376,19 +382,16 @@ namespace H3FontExtension
                             {
                                 if (colorCode[0] == '#')
                                 {
-                                    auto rst = std::from_chars(colorCode.data(), colorCode.data() + colorCode.length(),
-                                                               textColor, 16);
-                                    if (rst.ec != std::errc())
-                                    {
-                                        textColor = defaultColor;
-                                    }
+                                    auto [_, ec] = std::from_chars(
+                                        colorCode.c_str() + 1, colorCode.c_str() + colorCode.length(), textColor, 16);
+                                    textColor = ec != std::errc() ? defaultColor : textColor;
                                 }
                                 else
                                 {
                                     textColor = TextColorMap[colorCode].value_or(defaultColor);
                                     if (textColor != defaultColor && H3BitMode::Get() != 4)
                                     {
-                                        textColor = H3RGB565(textColor).Value();
+                                        textColor = RGB888toRGB565(textColor);
                                     }
                                 }
                             }
