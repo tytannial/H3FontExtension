@@ -67,7 +67,7 @@ namespace H3FontExtension
         }
 
         /// <summary>
-        /// 汉字结构体
+        /// 扩展字库结构体
         /// </summary>
         /// <param name="lpFileName"></param>
         /// <param name="nHeight"></param>
@@ -105,9 +105,9 @@ namespace H3FontExtension
          * @brief 字体字符串指针
          * @param section 区码
          * @param position 位码
-         * @return 汉字库字符指针
+         * @return 扩展字库字符图像指针
          */
-        inline PUINT8 __fastcall GetHzkCharacterPcxPointer(UINT8 section, UINT8 position)
+        inline PUINT8 __fastcall GetExtGlyphDataPtr(UINT8 section, UINT8 position)
         {
             return this->FontFileBuffer +
                    this->Width * this->Height * ((section - DBCS_SECTION) * 0xBF + position - DBCS_POSITION);
@@ -119,7 +119,7 @@ namespace H3FontExtension
         ExtFont* ExtData;
     };
 
-    // 汉字字体全局变量
+    // 游戏内字体映射
     static std::unordered_map<std::string, ExtFont> g_ExtFontTable;
 
     bool Init();

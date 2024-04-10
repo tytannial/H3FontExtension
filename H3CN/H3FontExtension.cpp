@@ -243,7 +243,7 @@ namespace H3FontExtension
         // 左边距为1，对齐Y中轴
         int startX = iX + cFont->MarginLeft;
         int startY = iY;
-        PUINT8 pFontFileBuffer = cFont->GetHzkCharacterPcxPointer(cHiCode, cLoCode);
+        PUINT8 pFontFileBuffer = cFont->GetExtGlyphDataPtr(cHiCode, cLoCode);
 
         for (int rowIdx = 0; rowIdx < cFont->Height; ++rowIdx)
         {
