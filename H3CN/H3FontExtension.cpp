@@ -212,7 +212,7 @@ namespace H3FontExtension
             PUINT8 pFontBuffer = pFont->GetChar(cHiCode);
             int startX = iX + pFont->width[cHiCode].leftMargin;
             int startY = iY;
-            for (int rowIdx = 0; rowIdx < pFont->height; ++rowIdx)
+            for (int rowIdx = 0; rowIdx < pFont->oriHeight; ++rowIdx)
             {
                 for (int colIdx = 0; colIdx < pFont->width[cHiCode].span; ++colIdx)
                 {
@@ -324,8 +324,8 @@ namespace H3FontExtension
             }
         }
 
-        int cfontShift = std::max(0, (pFont->height - pFont->ExtData->Height) / 2);
-        int cfontHeight = std::max(pFont->height, pFont->ExtData->Height);
+        int ascFontShift = (int)((double)(pFont->height - pFont->oriHeight) / 2);
+        int extFontShift = (int)((double)(pFont->height - pFont->ExtData->Height) / 2);
 
         // 处理颜色代码
         uColorIdx = uColorIdx & 0x100 ? uColorIdx & 0xFE : uColorIdx + 9;
@@ -432,8 +432,8 @@ namespace H3FontExtension
 
                 if (code < DBCS_SECTION || code == 0xFF)
                 {
-                    H3Font_DrawChar(pFont, pPcx, code, 0, iX + startX + posMove, iY + startY + rowIdx * cfontHeight,
-                                    textColor);
+                    H3Font_DrawChar(pFont, pPcx, code, 0, iX + startX + posMove,
+                                    iY + startY + ascFontShift + rowIdx * pFont->height, textColor);
                     posMove += pFont->width[code].leftMargin + pFont->width[code].span + pFont->width[code].rightMargin;
                     continue;
                 }
@@ -442,7 +442,7 @@ namespace H3FontExtension
                 if (extCode && extCode != 0xFF && extCode >= DBCS_POSITION)
                 {
                     H3Font_DrawChar(pFont, pPcx, code, extCode, iX + startX + posMove,
-                                    iY + startY + cfontShift + rowIdx * cfontHeight, textColor);
+                                    iY + startY + extFontShift + rowIdx * pFont->height, textColor);
                     posMove += pFont->ExtData->GlyphWidth;
                     ++i;
                 }
@@ -754,6 +754,8 @@ namespace H3FontExtension
         {
             font->ExtData = &g_ExtFontTable.at("medfont.fnt");
         }
+        font->oriHeight = font->height;
+        font->height = std::max(font->height, font->ExtData->Height);
         return font;
     }
 
@@ -834,10 +836,10 @@ namespace H3FontExtension
         _PI->WriteHiHook(0x601AB0, SPLICE_, FASTCALL_, EXTENDED_, Main_DirectDrawInit_Hook);
 
         // 扩展字体申请的堆大小，额外增加4bytes空间
-        _PI->WriteDword(0x55B9CE + 1, H3FontExt::SIZE + 4);
+        _PI->WriteDword(0x55B9CE + 1, sizeof(H3FontExt));
 
         // 字体加载后填入拓展字符区
-        _PI->WriteHiHook(0x55BD10, SPLICE_, THISCALL_, EXTENDED_, H3Font_Load_Hook);
+        _PI->WriteHiHook(0x55BAE0, SPLICE_, THISCALL_, EXTENDED_, H3Font_Load_Hook);
 
         // 字符绘制和文本框宽度计算
         _PI->WriteHiHook(0x4B51F0, SPLICE_, THISCALL_, H3Font_DrawText);           // 文本绘制

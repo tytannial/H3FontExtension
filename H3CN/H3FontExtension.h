@@ -116,6 +116,7 @@ namespace H3FontExtension
 
     struct H3FontExt : h3::H3Font
     {
+        int oriHeight;
         ExtFont* ExtData;
     };
 
