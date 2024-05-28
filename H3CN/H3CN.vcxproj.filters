@@ -38,6 +38,8 @@
   </ItemGroup>
   <ItemGroup>
     <CopyFileToFolders Include="H3CN.toml" />
-    <CopyFileToFolders Include="H3CN.TextColor.toml" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
   </ItemGroup>
 </Project>

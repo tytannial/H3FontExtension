@@ -817,8 +817,7 @@ namespace H3FontExtension
             IsTextColorEnable = config["General"]["TextColor"].value_or(true);
             if (IsTextColorEnable)
             {
-                auto configColor = toml::parse_file("H3CN.TextColor.toml");
-                TextColorMap = *configColor["TextColor"].as_table();
+                TextColorMap = *config["TextColor"].as_table();
             }
 
             // 文本行宽计算规则限制
