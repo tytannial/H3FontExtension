@@ -182,6 +182,7 @@ copy /Y "$(TargetDir)H3CN.pdb" "G:\Games\HoMM 3 Complete\plugins\H3CN.pdb"</Comm
     <ClInclude Include="deps\H3API.hpp" />
     <ClInclude Include="deps\toml.hpp" />
     <ClInclude Include="H3FontExtension.h" />
+    <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="H3FontExtension.cpp" />
@@ -194,6 +195,9 @@ copy /Y "$(TargetDir)H3CN.pdb" "G:\Games\HoMM 3 Complete\plugins\H3CN.pdb"</Comm
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="H3CN.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
