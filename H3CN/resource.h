@@ -2,8 +2,8 @@
 // Microsoft Visual C++ generated include file.
 // Used by H3CN.rc
 
-// пб╤тоС╣добр╩вИд╛хож╣
-// 
+// Ф√╟Е╞╧Х╠║Г └Д╦▀Д╦─Г╩└И╩≤Х╝╓Е─╪
+//
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        101
