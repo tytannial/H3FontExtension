@@ -80,6 +80,8 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
+      <ModuleDefinitionFile>
+      </ModuleDefinitionFile>
     </Link>
     <PostBuildEvent>
       <Message>
@@ -108,12 +110,15 @@ copy /Y "$(TargetDir)H3CN.pdb" "G:\Games\HoMM 3 Complete\plugins\H3CN.pdb"</Comm
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
+      <ModuleDefinitionFile>
+      </ModuleDefinitionFile>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="deps\H3API.hpp" />
     <ClInclude Include="deps\toml.hpp" />
     <ClInclude Include="H3FontExtension.h" />
+    <ClInclude Include="hook\binkw32hack.h" />
     <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>

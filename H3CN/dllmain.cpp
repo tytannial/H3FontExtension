@@ -1,4 +1,5 @@
 #include "H3FontExtension.h"
+#include "hook/binkw32hack.h"
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
 {
@@ -13,6 +14,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     {
         return FALSE;
     }
+
+	LoadBinkw32FuncEntry();
 
     static bool plugin_On = false;
 

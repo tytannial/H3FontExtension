@@ -16,6 +16,9 @@
     <Filter Include="deps">
       <UniqueIdentifier>{8c43b544-0a1a-4554-9443-17884950f1d5}</UniqueIdentifier>
     </Filter>
+    <Filter Include="hook">
+      <UniqueIdentifier>{ba03a094-8a61-4d1b-b482-fc61f66873e9}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="H3FontExtension.h">
@@ -29,6 +32,9 @@
     </ClInclude>
     <ClInclude Include="resource.h">
       <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="hook\binkw32hack.h">
+      <Filter>hook</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
