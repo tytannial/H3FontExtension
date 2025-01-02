@@ -20,16 +20,19 @@ BoxWidthMax    = -1     # 用于限制最大弹出提示框宽度(大于256生�
 # MarginLeft: 左边距
 # MarginRight: 右边距
 # MarginBottom: 行距修正
+# MarginBottom: 行距修正
+# LineHeightAdjust: 行高调整，提高行高
 
 [[Fonts]]
 Name = "tiny.fnt"
-ExtFont = "Fonts/GBK_Small"
-Height = 12
-Width = 12
+ExtFont = "Fonts/GBK_Tiny"
+Height = 10
+Width = 10
 MarginLeft = 1
 MarginRight = 0
 MarginBottom = 0
 DrawShadow = false
+LineHeightAdjust = 0
 
 [[Fonts]]
 Name = "smalfont.fnt"
@@ -40,6 +43,7 @@ MarginLeft = 1
 MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
+LineHeightAdjust = 0
 
 [[Fonts]]
 Name = "medfont.fnt"
@@ -50,6 +54,7 @@ MarginLeft = 1
 MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
+LineHeightAdjust = 2
 
 [[Fonts]]
 Name = "bigfont.fnt"
@@ -60,6 +65,7 @@ MarginLeft = 2
 MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
+LineHeightAdjust = 0
 
 [[Fonts]]
 Name = "calli10r.fnt"
@@ -70,6 +76,7 @@ MarginLeft = 1
 MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
+LineHeightAdjust = 0
 
 [[Fonts]]
 Name = "credits.fnt"
@@ -80,6 +87,7 @@ MarginLeft = 2
 MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
+LineHeightAdjust = 0
 
 [[Fonts]]
 Name = "hiscore.fnt"
@@ -90,6 +98,7 @@ MarginLeft = 1
 MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
+LineHeightAdjust = 0
 
 [[Fonts]]
 Name = "times08r.fnt"
@@ -100,6 +109,7 @@ MarginLeft = 1
 MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
+LineHeightAdjust = 0
 
 [[Fonts]]
 Name = "verd10b.fnt"
@@ -110,6 +120,7 @@ MarginLeft = 1
 MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
+LineHeightAdjust = 0
 
 
 # 彩色文字定义

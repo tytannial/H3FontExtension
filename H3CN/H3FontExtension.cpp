@@ -755,7 +755,7 @@ namespace H3FontExtension
 			font->ExtData = &g_ExtFontTable.at("medfont.fnt");
 		}
 		font->oriHeight = font->height;
-		font->height = std::max(font->height, font->ExtData->Height);
+		font->height = std::max(font->height, font->ExtData->Height) + font->ExtData->LineHeightAdjust;
 		return font;
 	}
 
@@ -808,10 +808,16 @@ namespace H3FontExtension
 			{
 				const auto& fontCfg = item.as_table();
 				g_ExtFontTable[_strlwr((char*)fontCfg->get("Name")->value_or(""))] =
-					ExtFont(fontCfg->get("ExtFont")->value_or(""), fontCfg->get("Height")->value_or(0),
-						fontCfg->get("Width")->value_or(0), fontCfg->get("MarginLeft")->value_or(1),
-						fontCfg->get("MarginRight")->value_or(0), fontCfg->get("MarginBottom")->value_or(0),
-						fontCfg->get("DrawShadow")->value_or(true));
+					ExtFont(
+						fontCfg->get("ExtFont")->value_or(""),
+						fontCfg->get("Height")->value_or(0),
+						fontCfg->get("Width")->value_or(0),
+						fontCfg->get("MarginLeft")->value_or(1),
+						fontCfg->get("MarginRight")->value_or(0),
+						fontCfg->get("MarginBottom")->value_or(0),
+						fontCfg->get("DrawShadow")->value_or(true),
+						fontCfg->get("LineHeightAdjust")->value_or(0)
+					);
 			}
 
 			IsTextColorEnable = config["General"]["TextColor"].value_or(true);

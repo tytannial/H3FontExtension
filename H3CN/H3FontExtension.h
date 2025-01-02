@@ -55,15 +55,16 @@ namespace H3FontExtension
 		int MarginBottom = 0;
 		int GlyphWidth = 0;
 		bool DrawShadow = true;
+		int LineHeightAdjust = 0;
 
 		ExtFont()
 		{
 		}
 
 		ExtFont(LPCSTR lpFileName, int iHeight, int iWidth, int iMarginLeft, int iMarginRight, int iMarginBottom,
-			bool bDrawShadow)
+			bool bDrawShadow, int lineHeightAdjust)
 		{
-			LoadHzhFont(lpFileName, iHeight, iWidth, iMarginLeft, iMarginRight, iMarginBottom, bDrawShadow);
+			LoadHzhFont(lpFileName, iHeight, iWidth, iMarginLeft, iMarginRight, iMarginBottom, bDrawShadow, lineHeightAdjust);
 		}
 
 		/// <summary>
@@ -74,7 +75,7 @@ namespace H3FontExtension
 		/// <param name="nWidth"></param>
 		/// <returns></returns>
 		bool __fastcall LoadHzhFont(LPCSTR lpFileName, int iHeight, int iWidth, int iMarginLeft, int iMarginRight,
-			int iMarginBottom, bool bDrawShadow)
+			int iMarginBottom, bool bDrawShadow, int lineHeightAdjust)
 		{
 			std::ifstream file(lpFileName, std::ios::in | std::ios::binary);
 
@@ -91,6 +92,7 @@ namespace H3FontExtension
 			this->MarginBottom = iMarginBottom;
 			this->DrawShadow = bDrawShadow;
 			this->GlyphWidth = iMarginLeft + iWidth + iMarginRight;
+			this->LineHeightAdjust = lineHeightAdjust;
 
 			file.seekg(0, std::ios::end);
 			std::streampos fileSize = file.tellg();
