@@ -32,7 +32,6 @@ MarginLeft = 1
 MarginRight = 0
 MarginBottom = 0
 DrawShadow = false
-LineHeightAdjust = 0
 
 [[Fonts]]
 Name = "smalfont.fnt"
@@ -43,7 +42,6 @@ MarginLeft = 1
 MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
-LineHeightAdjust = 0
 
 [[Fonts]]
 Name = "medfont.fnt"
@@ -54,7 +52,6 @@ MarginLeft = 1
 MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
-LineHeightAdjust = 2
 
 [[Fonts]]
 Name = "bigfont.fnt"
@@ -65,7 +62,6 @@ MarginLeft = 2
 MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
-LineHeightAdjust = 0
 
 [[Fonts]]
 Name = "calli10r.fnt"
@@ -76,7 +72,6 @@ MarginLeft = 1
 MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
-LineHeightAdjust = 0
 
 [[Fonts]]
 Name = "credits.fnt"
@@ -98,7 +93,6 @@ MarginLeft = 1
 MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
-LineHeightAdjust = 0
 
 [[Fonts]]
 Name = "times08r.fnt"
@@ -109,7 +103,6 @@ MarginLeft = 1
 MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
-LineHeightAdjust = 0
 
 [[Fonts]]
 Name = "verd10b.fnt"
@@ -120,7 +113,6 @@ MarginLeft = 1
 MarginRight = 0
 MarginBottom = 0
 DrawShadow = true
-LineHeightAdjust = 0
 
 
 # 彩色文字定义

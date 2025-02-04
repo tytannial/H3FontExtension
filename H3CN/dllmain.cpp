@@ -14,19 +14,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 		plugin_On = true;
 
 		LoadBinkw32FuncEntry();
-
-		TCHAR pName[MAX_PATH];
-		if (!GetModuleFileName(NULL, pName, MAX_PATH))
-		{
-			return FALSE;
-		}
-
-		auto pEnd = wcsrchr(pName, '\\');
-		if (_wcsicmp(pEnd, L"\\h3hota HD.exe") != 0
-			&& _wcsicmp(pEnd, L"\\h3hota_HD.exe") != 0
-			&& _wcsicmp(pEnd, L"\\Heroes3 HD.exe") != 0
-			&& _wcsicmp(pEnd, L"\\Heroes3_HD.exe") != 0)
-		{
+		auto gameVersion = h3::H3Version();
+		if (!gameVersion.hota() && !gameVersion.sod()) {
 			return FALSE;
 		}
 

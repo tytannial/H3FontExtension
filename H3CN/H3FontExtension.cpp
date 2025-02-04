@@ -464,6 +464,8 @@ namespace H3FontExtension
 	static void __stdcall H3Font_SplitTextIntoLines(HiHook* h, H3FontExt* pFont, char* szText, const int iBoxWidth,
 		H3Vector<H3String>& lines)
 	{
+		lines.RemoveAll();
+
 		if (!strlen(szText))
 		{
 			return;
@@ -755,7 +757,7 @@ namespace H3FontExtension
 			font->ExtData = &g_ExtFontTable.at("medfont.fnt");
 		}
 		font->oriHeight = font->height;
-		font->height = std::max(font->height, font->ExtData->Height) + font->ExtData->LineHeightAdjust;
+		font->height = std::max(font->height, font->ExtData->Height) /*+ font->ExtData->LineHeightAdjust*/;
 		return font;
 	}
 
@@ -796,7 +798,15 @@ namespace H3FontExtension
 #endif
 		// 获取代码修补库
 		_P = GetPatcher();
-		_PI = _P->CreateInstance("HD.Plugin.H3FontExtension");
+		_PI = _P->GetInstance("HD.Plugin.H3FontExtension");
+		if (!_PI)
+		{
+			_PI = _P->CreateInstance("HD.Plugin.H3FontExtension");
+		}
+		else
+		{
+			_PI->UndoAll();
+		}
 
 		// 加载配置
 		try
@@ -809,14 +819,14 @@ namespace H3FontExtension
 				const auto& fontCfg = item.as_table();
 				g_ExtFontTable[_strlwr((char*)fontCfg->get("Name")->value_or(""))] =
 					ExtFont(
-						fontCfg->get("ExtFont")->value_or(""),
-						fontCfg->get("Height")->value_or(0),
-						fontCfg->get("Width")->value_or(0),
-						fontCfg->get("MarginLeft")->value_or(1),
-						fontCfg->get("MarginRight")->value_or(0),
-						fontCfg->get("MarginBottom")->value_or(0),
-						fontCfg->get("DrawShadow")->value_or(true),
-						fontCfg->get("LineHeightAdjust")->value_or(0)
+						fontCfg->get("ExtFont")->value_or("")
+						, fontCfg->get("Height")->value_or(0)
+						, fontCfg->get("Width")->value_or(0)
+						, fontCfg->get("MarginLeft")->value_or(1)
+						, fontCfg->get("MarginRight")->value_or(0)
+						, fontCfg->get("MarginBottom")->value_or(0)
+						, fontCfg->get("DrawShadow")->value_or(true)
+						//, fontCfg->get("LineHeightAdjust")->value_or(0)
 					);
 			}
 
