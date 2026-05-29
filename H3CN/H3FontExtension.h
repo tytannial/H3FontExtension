@@ -122,6 +122,35 @@ namespace H3FontExtension
 		ExtFont* ExtData;
 	};
 
+	/**
+	 * @brief 控制字符枚举
+	 */
+	enum class TokenType : uint8_t {
+		Newline,    // '\n'
+		Space,      // ' '
+		SingleByte, // ASCII 可见字符
+		DoubleByte  // 双字节（GBK 汉字等）
+	};
+
+	/**
+	 * @brief 颜色变更点：记录 cleanText 中某个字节位置的颜色切换
+	 */
+	struct ColorStop
+	{
+		size_t bytePos;   // cleanText 中的字节偏移
+		DWORD  color;     // 切换后的渲染颜色（已是目标色深）
+	};
+
+	/**
+	 * @brief 预处理后的文本行：颜色码已剥离，颜色信息独立存储
+	 */
+	struct CleanLine
+	{
+		std::string text;   // 纯可见字符（无颜色码）
+		int lineWidth;
+		std::vector<ColorStop> stops; // 按 bytePos 升序排列的颜色变更点
+	};
+
 	// 游戏内字体映射
 	static std::unordered_map<std::string, ExtFont> g_ExtFontTable;
 
