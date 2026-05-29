@@ -188,7 +188,6 @@ namespace H3FontExtension
 		const auto* widthArr = pFont->width;
 		const int spaceWidth = GetH3CharWidth(widthArr, 32);
 		const int glyphWidth = pFont->ExtData->GlyphWidth;
-		const bool colorEnabled = IsTextColorEnable;
 
 		std::string lineBuf;
 		int lineWidth = 0;
@@ -238,7 +237,7 @@ namespace H3FontExtension
 				uint8_t code = static_cast<uint8_t>(*wordEnd);
 
 				// 跳过颜色码标记 {~...} 和 { }
-				if (colorEnabled && (code == '{' || code == '}'))
+				if (IsTextColorEnable && (code == '{' || code == '}'))
 				{
 					if (code == '{' && *(wordEnd + 1) == '~')
 					{
@@ -297,7 +296,7 @@ namespace H3FontExtension
 						int charBytes = 1;
 
 						// 跳过颜色码
-						if (colorEnabled && (code == '{' || code == '}'))
+						if (IsTextColorEnable && (code == '{' || code == '}'))
 						{
 							if (code == '{' && *(p + 1) == '~')
 							{
@@ -468,7 +467,7 @@ namespace H3FontExtension
 		const int oriHeight = pFont->oriHeight;
 		const int extHeight = pFont->ExtData->Height;
 		const int glyphWidth = pFont->ExtData->GlyphWidth;
-		const auto* w = pFont->width;
+		const auto* widthArr = pFont->width;
 
 		const int ascShift = (fontHeight - oriHeight) / 2;
 		const int extShift = (fontHeight - extHeight) / 2;
@@ -552,7 +551,7 @@ namespace H3FontExtension
 					{
 						H3Font_DrawChar(pFont, pPcx, code, 0,
 							iX + startX + posMove, lineY + ascShift, defaultColor);
-						posMove += w[code].leftMargin + w[code].span + w[code].rightMargin;
+						posMove += GetH3CharWidth(widthArr, code);
 						++p;
 					}
 					else
@@ -587,7 +586,7 @@ namespace H3FontExtension
 					{
 						H3Font_DrawChar(pFont, pPcx, code, 0,
 							iX + startX + posMove, lineY + ascShift, curColor);
-						posMove += w[code].leftMargin + w[code].span + w[code].rightMargin;
+						posMove += GetH3CharWidth(widthArr, code);
 						++p;
 					}
 					else
@@ -615,10 +614,8 @@ namespace H3FontExtension
 	{
 		lines.RemoveAll();
 
-		if (!strlen(szText))
-		{
+		if (!szText || !*szText)
 			return;
-		}
 
 		vector<TextLineStruct> vlines;
 		SplitTextIntoLines(pFont, szText, iBoxWidth, vlines);
@@ -641,65 +638,63 @@ namespace H3FontExtension
 	template<typename Func>
 	static void ForEachVisibleChar(H3FontExt* pFont, const char* szText, Func&& fn)
 	{
-		const auto* w = pFont->width;
-		const int gw = pFont->ExtData->GlyphWidth;   // 双字节字符宽度
-		const int sw = w[32].leftMargin + w[32].span + w[32].rightMargin; // 空格宽度
-		const bool ce = IsTextColorEnable;
-		const char* p = szText;
+		const auto* widthArr = pFont->width;
+		const int spaceWidth = GetH3CharWidth(widthArr, 32);// 空格宽度
+		const int glyphWidth = pFont->ExtData->GlyphWidth;// 双字节字符宽度
 
-		while (*p)
+		while (*szText)
 		{
-			uint8_t c = static_cast<uint8_t>(*p);
+			uint8_t code = static_cast<uint8_t>(*szText);
 
 			// -------- 跳过颜色码 --------
-			if (ce && (c == '{' || c == '}'))
+			if (IsTextColorEnable && (code == '{' || code == '}'))
 			{
-				if (c == '{' && *(p + 1) == '~')
+				if (code == '{' && *(szText + 1) == '~')
 				{
-					p += 2;                                    // 跳过 "{~"
-					while (*p && *p != '}' && *p != ' ' && *p != '\n')
-						++p;
-					if (*p == '}') ++p;                        // 跳过 '}'
+					szText += 2;                                    // 跳过 "{~"
+					while (*szText && *szText != '}' && *szText != ' ' && *szText != '\n')
+						++szText;
+					if (*szText == '}') ++szText;                        // 跳过 '}'
 					continue;
 				}
-				++p;                                           // 单独的 '{' 或 '}'
+				++szText;                                           // 单独的 '{' 或 '}'
 				continue;
 			}
 
 			// -------- 换行 --------
-			if (c == '\n')
+			if (code == '\n')
 			{
 				fn(TokenType::Newline, 0, 1);
-				++p;
+				++szText;
 				continue;
 			}
 
 			// -------- 空格 --------
-			if (c == ' ')
+			if (code == ' ')
 			{
-				fn(TokenType::Space, sw, 1);
-				++p;
+				fn(TokenType::Space, spaceWidth, 1);
+				++szText;
 				continue;
 			}
 
 			// -------- 单字节字符 --------
-			if (c < DBCS_SECTION || c == 0xFF)
+			if (code < DBCS_SECTION || code == 0xFF)
 			{
-				fn(TokenType::SingleByte, w[c].leftMargin + w[c].span + w[c].rightMargin, 1);
-				++p;
+				fn(TokenType::SingleByte, widthArr[code].leftMargin + widthArr[code].span + widthArr[code].rightMargin, 1);
+				++szText;
 				continue;
 			}
 
 			// -------- 双字节字符 --------
-			uint8_t nc = static_cast<uint8_t>(*(p + 1));
-			if (IsDBCSLeadByte(c, nc))
+			uint8_t nc = static_cast<uint8_t>(*(szText + 1));
+			if (IsDBCSLeadByte(code, nc))
 			{
-				fn(TokenType::DoubleByte, gw, 2);
-				p += 2;
+				fn(TokenType::DoubleByte, glyphWidth, 2);
+				szText += 2;
 			}
 			else
 			{
-				++p;  // 无效的双字节首字节，跳过
+				++szText;  // 无效的双字节首字节，跳过
 			}
 		}
 	}
@@ -713,7 +708,8 @@ namespace H3FontExtension
 	 */
 	static int __stdcall H3Font_GetWordWidth(HiHook* h, H3FontExt* pFont, char* szText)
 	{
-		if (!szText || !*szText) return 0;
+		if (!szText || !*szText)
+			return 0;
 
 		int maxWidth = 0;
 		int wordWidth = 0;
@@ -723,7 +719,8 @@ namespace H3FontExtension
 			{
 				if (type == TokenType::Newline || type == TokenType::Space)
 				{
-					if (wordWidth > maxWidth) maxWidth = wordWidth;
+					if (wordWidth > maxWidth)
+						maxWidth = wordWidth;
 					wordWidth = 0;
 				}
 				else
@@ -732,7 +729,8 @@ namespace H3FontExtension
 				}
 			});
 
-		if (wordWidth > maxWidth) maxWidth = wordWidth;
+		if (wordWidth > maxWidth)
+			maxWidth = wordWidth;
 		return clamp(maxWidth, BoxWidthMin, BoxWidthMax);
 	}
 
@@ -746,7 +744,8 @@ namespace H3FontExtension
 	 */
 	static int __stdcall H3Font_GetLineWrapWidth(HiHook* h, H3FontExt* pFont, char* szText, int iBoxWidth)
 	{
-		if (!szText || !*szText) return 0;
+		if (!szText || !*szText)
+			return 0;
 
 		int maxWidth = 0;
 		int lineWidth = 0;
@@ -756,21 +755,24 @@ namespace H3FontExtension
 			{
 				if (type == TokenType::Newline)
 				{
-					if (lineWidth > maxWidth) maxWidth = lineWidth;
+					if (lineWidth > maxWidth)
+						maxWidth = lineWidth;
 					lineWidth = 0;
 				}
 				else
 				{
 					if (lineWidth + width > iBoxWidth)
 					{
-						if (lineWidth > maxWidth) maxWidth = lineWidth;
+						if (lineWidth > maxWidth)
+							maxWidth = lineWidth;
 						lineWidth = 0;
 					}
 					lineWidth += width;
 				}
 			});
 
-		if (lineWidth > maxWidth) maxWidth = lineWidth;
+		if (lineWidth > maxWidth)
+			maxWidth = lineWidth;
 		return maxWidth;
 	}
 
@@ -784,7 +786,8 @@ namespace H3FontExtension
 	 */
 	static int __stdcall H3Font_GetLineCount(HiHook* h, H3FontExt* pFont, char* szText, int iBoxWidth)
 	{
-		if (!szText || !*szText) return 0;
+		if (!szText || !*szText)
+			return 0;
 
 		int lineCount = 1;
 		int lineWidth = 0;
@@ -820,7 +823,8 @@ namespace H3FontExtension
 	 */
 	static int __stdcall H3Font_GetLineWidth(HiHook* h, H3FontExt* pFont, char* szText)
 	{
-		if (!szText || !*szText) return 0;
+		if (!szText || !*szText)
+			return 0;
 
 		int maxWidth = 0;
 		int lineWidth = 0;
@@ -830,7 +834,8 @@ namespace H3FontExtension
 			{
 				if (type == TokenType::Newline)
 				{
-					if (lineWidth > maxWidth) maxWidth = lineWidth;
+					if (lineWidth > maxWidth)
+						maxWidth = lineWidth;
 					lineWidth = 0;
 				}
 				else
@@ -839,7 +844,8 @@ namespace H3FontExtension
 				}
 			});
 
-		if (lineWidth > maxWidth) maxWidth = lineWidth;
+		if (lineWidth > maxWidth)
+			maxWidth = lineWidth;
 		return maxWidth;
 	}
 
