@@ -52,6 +52,85 @@ namespace H3FontExtension
 	void(__fastcall* DrawPixcel)(const PUINT8 rowBuffer, int col, DWORD color);
 
 	/**
+	 * @brief 遍历文本中所有"可见 token"，自动跳过颜色码 {~RRGGBB} / { } / }
+	 *
+	 * @param pFont    字体指针
+	 * @param szText   输入文本
+	 * @param fn       回调：fn(TokenType type, int width, int charBytes)
+	 *                 - type:       token 类型
+	 *                 - width:      该 token 的像素宽度（Newline 为 0）
+	 *                 - charBytes:  该 token 在原始字符串中占的字节数
+	 */
+	template<typename Func>
+	static void ForEachVisibleChar(H3FontExt* pFont, LPCSTR szText, Func&& fn)
+	{
+		const auto* widthArr = pFont->width;
+		const int spaceWidth = GetH3CharWidth(widthArr, 32);// 空格宽度
+		const int glyphWidth = pFont->ExtData->GlyphWidth;// 双字节字符宽度
+
+		while (*szText)
+		{
+			uint8_t code = static_cast<uint8_t>(*szText);
+
+			// -------- 跳过颜色码 --------
+			if (IsTextColorEnable && (code == '{' || code == '}'))
+			{
+				if (code == '{' && *(szText + 1) == '~')
+				{
+					szText += 2; // 跳过 "{~"
+					while (*szText && *szText != '}' && *szText != ' ' && *szText != '\n')
+						++szText;
+					if (*szText == '}') // 跳过 '}'
+						++szText;
+					continue;
+				}
+				++szText;
+				continue;
+			}
+
+			// -------- 换行 --------
+			if (code == '\n')
+			{
+				if (!fn(TokenType::Newline, 0, 1))
+					return;
+				++szText;
+				continue;
+			}
+
+			// -------- 空格 --------
+			if (code == ' ')
+			{
+				if (!fn(TokenType::Space, spaceWidth, 1))
+					return;
+				++szText;
+				continue;
+			}
+
+			// -------- 单字节字符 --------
+			if (code < DBCS_SECTION || code == 0xFF)
+			{
+				if (!fn(TokenType::SingleByte, GetH3CharWidth(widthArr, code), 1))
+					return;
+				++szText;
+				continue;
+			}
+
+			// -------- 双字节字符 --------
+			uint8_t nc = static_cast<uint8_t>(*(szText + 1));
+			if (IsDBCSLeadByte(code, nc))
+			{
+				if (!fn(TokenType::DoubleByte, glyphWidth, 2))
+					return;
+				szText += 2;
+			}
+			else
+			{
+				++szText;  // 无效的双字节首字节，跳过
+			}
+		}
+	}
+
+	/**
 	 * @brief 将一行原始文本（含颜色码）预处理为 CleanLine
 	 * @param src            原始拆行结果
 	 * @param defaultColor   默认渲染颜色
@@ -178,7 +257,7 @@ namespace H3FontExtension
 	 * @param stringVector 拆分后的文本行容器
 	 * @return
 	 */
-	static void __stdcall SplitTextIntoLines(H3FontExt* pFont, char* szText, const int iBoxWidth,
+	static void __stdcall SplitTextIntoLines(H3FontExt* pFont, LPCSTR szText, const int iBoxWidth,
 		vector<TextLineStruct>& lines)
 	{
 		if (!*szText)
@@ -227,50 +306,21 @@ namespace H3FontExtension
 			if (!*szText)
 				break;
 
-			// ---- 阶段 2：取词——确定词边界并预计算词宽（不含字符拷贝）----
+			// ---- 阶段 2：取词——使用 ForEachVisibleChar 确定词边界 ----
 			int wordWidth = 0;
-			char* wordStart = szText;
-			char* wordEnd = szText;
+			const char* wordStart = szText;
+			const char* wordEnd = szText;
 
-			while (*wordEnd && *wordEnd != ' ' && *wordEnd != '\n')
-			{
-				uint8_t code = static_cast<uint8_t>(*wordEnd);
-
-				// 跳过颜色码标记 {~...} 和 { }
-				if (IsTextColorEnable && (code == '{' || code == '}'))
+			ForEachVisibleChar(pFont, szText,
+				[&](TokenType type, int width, int charBytes)
 				{
-					if (code == '{' && *(wordEnd + 1) == '~')
-					{
-						// 跳过整个 {~RRGGBB}
-						wordEnd += 2; // 跳过 {~
-						while (*wordEnd && *wordEnd != '}' && *wordEnd != ' ' && *wordEnd != '\n')
-							++wordEnd;
-						if (*wordEnd == '}')
-							++wordEnd;
-						continue;
-					}
-					else
-					{
-						++wordEnd; // 单独的 { 或 }
-						continue;
-					}
-				}
+					if (type == TokenType::Space || type == TokenType::Newline)
+						return false; // 遇到空格或换行，结束当前词的扫描
 
-				// 双字节字符
-				uint8_t nextCode = static_cast<uint8_t>(*(wordEnd + 1));
-				if (IsDBCSLeadByte(code, nextCode))
-				{
-					wordWidth += glyphWidth;
-					wordEnd += 2;
-					continue;
-				}
-
-				// 单字节字符
-				wordWidth += GetH3CharWidth(widthArr, code);
-				++wordEnd;
-			}
-
-			int wordLen = static_cast<int>(wordEnd - wordStart);
+					wordWidth += width;
+					wordEnd += charBytes;
+					return true; // 继续扫描
+				});
 
 			// ---- 阶段 3：拆行判定 ----
 			if (lineWidth + wordWidth + blankWidth > iBoxWidth)
@@ -288,28 +338,12 @@ namespace H3FontExtension
 				// 如果词本身就超宽，逐字符拆行
 				if (wordWidth > iBoxWidth)
 				{
-					char* p = wordStart;
+					LPCSTR p = wordStart;
 					while (p < wordEnd)
 					{
 						uint8_t code = static_cast<uint8_t>(*p);
 						int charW = 0;
 						int charBytes = 1;
-
-						// 跳过颜色码
-						if (IsTextColorEnable && (code == '{' || code == '}'))
-						{
-							if (code == '{' && *(p + 1) == '~')
-							{
-								p += 2;
-								while (p < wordEnd && *p != '}')
-									++p;
-								if (p < wordEnd)
-									++p;
-								continue;
-							}
-							++p;
-							continue;
-						}
 
 						uint8_t nextCode = static_cast<uint8_t>(*(p + 1));
 						if (IsDBCSLeadByte(code, nextCode))
@@ -342,7 +376,8 @@ namespace H3FontExtension
 			if (blankCount > 0)
 				lineBuf.append(blankCount, ' ');
 
-			lineBuf.append(wordStart, wordLen);
+			// 仅追加可见字符（颜色码已在 ForEachVisibleChar 中被跳过）
+			lineBuf.append(wordStart, static_cast<size_t>(wordEnd - wordStart));
 			lineWidth += wordWidth + blankWidth;
 			szText = wordEnd;
 		}
@@ -536,7 +571,7 @@ namespace H3FontExtension
 			}
 
 			// ---- 绘制内层循环 ----
-			int posMove = 0;
+			int curX = iX + startX;
 			const char* p = line.text.data();
 			const char* end = p + line.text.size();
 
@@ -550,15 +585,15 @@ namespace H3FontExtension
 					if (code < DBCS_SECTION || code == 0xFF)
 					{
 						H3Font_DrawChar(pFont, pPcx, code, 0,
-							iX + startX + posMove, lineY + ascShift, defaultColor);
-						posMove += GetH3CharWidth(widthArr, code);
+							curX, lineY + ascShift, defaultColor);
+						curX += GetH3CharWidth(widthArr, code);
 						++p;
 					}
 					else
 					{
 						H3Font_DrawChar(pFont, pPcx, code, static_cast<uint8_t>(p[1]),
-							iX + startX + posMove, lineY + extShift, defaultColor);
-						posMove += glyphWidth;
+							curX, lineY + extShift, defaultColor);
+						curX += glyphWidth;
 						p += 2;
 					}
 				}
@@ -585,15 +620,15 @@ namespace H3FontExtension
 					if (code < DBCS_SECTION || code == 0xFF)
 					{
 						H3Font_DrawChar(pFont, pPcx, code, 0,
-							iX + startX + posMove, lineY + ascShift, curColor);
-						posMove += GetH3CharWidth(widthArr, code);
+							curX, lineY + ascShift, curColor);
+						curX += GetH3CharWidth(widthArr, code);
 						++p;
 					}
 					else
 					{
 						H3Font_DrawChar(pFont, pPcx, code, static_cast<uint8_t>(p[1]),
-							iX + startX + posMove, lineY + extShift, curColor);
-						posMove += glyphWidth;
+							curX, lineY + extShift, curColor);
+						curX += glyphWidth;
 						p += 2;
 					}
 				}
@@ -619,83 +654,9 @@ namespace H3FontExtension
 
 		vector<TextLineStruct> vlines;
 		SplitTextIntoLines(pFont, szText, iBoxWidth, vlines);
-		for (const auto& line : vlines)
+		for (auto& line : vlines)
 		{
-			lines.Add(H3String(line.Text.c_str(), line.Text.length()));
-		}
-	}
-
-	/**
-	 * @brief 遍历文本中所有"可见 token"，自动跳过颜色码 {~RRGGBB} / { } / }
-	 *
-	 * @param pFont    字体指针
-	 * @param szText   输入文本
-	 * @param fn       回调：fn(TokenType type, int width, int charBytes)
-	 *                 - type:       token 类型
-	 *                 - width:      该 token 的像素宽度（Newline 为 0）
-	 *                 - charBytes:  该 token 在原始字符串中占的字节数
-	 */
-	template<typename Func>
-	static void ForEachVisibleChar(H3FontExt* pFont, const char* szText, Func&& fn)
-	{
-		const auto* widthArr = pFont->width;
-		const int spaceWidth = GetH3CharWidth(widthArr, 32);// 空格宽度
-		const int glyphWidth = pFont->ExtData->GlyphWidth;// 双字节字符宽度
-
-		while (*szText)
-		{
-			uint8_t code = static_cast<uint8_t>(*szText);
-
-			// -------- 跳过颜色码 --------
-			if (IsTextColorEnable && (code == '{' || code == '}'))
-			{
-				if (code == '{' && *(szText + 1) == '~')
-				{
-					szText += 2;                                    // 跳过 "{~"
-					while (*szText && *szText != '}' && *szText != ' ' && *szText != '\n')
-						++szText;
-					if (*szText == '}') ++szText;                        // 跳过 '}'
-					continue;
-				}
-				++szText;                                           // 单独的 '{' 或 '}'
-				continue;
-			}
-
-			// -------- 换行 --------
-			if (code == '\n')
-			{
-				fn(TokenType::Newline, 0, 1);
-				++szText;
-				continue;
-			}
-
-			// -------- 空格 --------
-			if (code == ' ')
-			{
-				fn(TokenType::Space, spaceWidth, 1);
-				++szText;
-				continue;
-			}
-
-			// -------- 单字节字符 --------
-			if (code < DBCS_SECTION || code == 0xFF)
-			{
-				fn(TokenType::SingleByte, widthArr[code].leftMargin + widthArr[code].span + widthArr[code].rightMargin, 1);
-				++szText;
-				continue;
-			}
-
-			// -------- 双字节字符 --------
-			uint8_t nc = static_cast<uint8_t>(*(szText + 1));
-			if (IsDBCSLeadByte(code, nc))
-			{
-				fn(TokenType::DoubleByte, glyphWidth, 2);
-				szText += 2;
-			}
-			else
-			{
-				++szText;  // 无效的双字节首字节，跳过
-			}
+			lines.Add(H3String(std::move(line.Text).c_str()));
 		}
 	}
 
@@ -717,7 +678,7 @@ namespace H3FontExtension
 		ForEachVisibleChar(pFont, szText,
 			[&](TokenType type, int width, int /*bytes*/)
 			{
-				if (type == TokenType::Newline || type == TokenType::Space)
+				if (type == TokenType::Newline || type == TokenType::Space || type == TokenType::DoubleByte)
 				{
 					if (wordWidth > maxWidth)
 						maxWidth = wordWidth;
@@ -727,6 +688,7 @@ namespace H3FontExtension
 				{
 					wordWidth += width;
 				}
+				return true; // 继续扫描
 			});
 
 		if (wordWidth > maxWidth)
@@ -769,6 +731,7 @@ namespace H3FontExtension
 					}
 					lineWidth += width;
 				}
+				return true; // 继续扫描
 			});
 
 		if (lineWidth > maxWidth)
@@ -809,6 +772,7 @@ namespace H3FontExtension
 					}
 					lineWidth += width;
 				}
+				return true; // 继续扫描
 			});
 
 		return lineCount;
@@ -842,6 +806,7 @@ namespace H3FontExtension
 				{
 					lineWidth += width;
 				}
+				return true; // 继续扫描
 			});
 
 		if (lineWidth > maxWidth)
