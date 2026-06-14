@@ -376,23 +376,20 @@ static void __stdcall SplitTextIntoLines(H3FontExt* pFont, LPCSTR szText, const 
         // ---- 阶段 2：取词——使用 ForEachVisibleChar 确定词边界 ----
         int wordWidth = 0;
         const char* wordStart = szText;
-        const char* wordEnd = szText;
 
+        // realEnd 指向第一个 Space/Newline（触发停止处），或 '\0'
+        // 范围 [wordStart, realEnd) 包含所有颜色标记及可见字符（不含结尾空白）
         const char* realEnd = ForEachVisibleChar(pFont, szText,
-            [&](TokenType type, int width, int charBytes)
+            [&](TokenType type, int width, int /*charBytes*/)
             {
                 if (type == TokenType::Space || type == TokenType::Newline)
                     return false; // 遇到空格或换行，结束当前词的扫描
-
                 wordWidth += width;
-                wordEnd += charBytes;
-                return true; // 继续扫描
+                return true;
             });
 
-        // wordEnd 仅记录可见字符位置；若只消费了颜色码/花括号等非可见内容，
-        // 则 wordEnd 未推进，导致外层 szText = wordEnd 陷入死循环。
-        // 此时用 ForEachVisibleChar 返回的 realEnd 安全推进 szText。
-        if (wordEnd == wordStart)
+        // 没有可见字符（如纯颜色码后跟空格/结尾）：安全推进 szText
+        if (wordWidth == 0)
         {
             szText = (realEnd > wordStart) ? realEnd : (wordStart + 1);
             continue;
@@ -415,13 +412,34 @@ static void __stdcall SplitTextIntoLines(H3FontExt* pFont, LPCSTR szText, const 
             if (wordWidth > iBoxWidth)
             {
                 LPCSTR p = wordStart;
-                while (p < wordEnd)
+                while (p < realEnd)
                 {
+                    const uint8_t code = static_cast<uint8_t>(*p);
+
+                    // ---- 颜色标记：保留到行缓冲但不计入宽度 ----
+                    if (IsTextColorEnable && (code == '{' || code == '}'))
+                    {
+                        if (code == '{' && (p + 1 < realEnd) && *(p + 1) == '~')
+                        {
+                            const char* tagStart = p;
+                            p += 2; // 跳过 "{~"
+                            while (p < realEnd && *p != '}')
+                                ++p;
+                            if (p < realEnd && *p == '}') // 跳过 '}'
+                                ++p;
+                            lineBuf.append(tagStart, p - tagStart);
+                            continue;
+                        }
+                        // 单个 { 或 }
+                        lineBuf.push_back(*p);
+                        ++p;
+                        continue;
+                    }
+
+                    // ---- 可见字符 ----
                     int charW = 0;
-                    uint8_t code = static_cast<uint8_t>(*p);
-                    // 安全获取下一字节：只有 wordEnd-p>=2 时才有可能为双字节
-                    uint8_t nextCode = (wordEnd - p >= 2) ? static_cast<uint8_t>(*(p + 1)) : 0;
-                    int charBytes = GetCharMetrics(code, nextCode, widthArr, glyphWidth, charW);
+                    const uint8_t nextCode = (p + 1 < realEnd) ? static_cast<uint8_t>(*(p + 1)) : 0;
+                    const int charBytes = GetCharMetrics(code, nextCode, widthArr, glyphWidth, charW);
 
                     if (lineWidth + charW > iBoxWidth && lineWidth > 0)
                     {
@@ -434,7 +452,7 @@ static void __stdcall SplitTextIntoLines(H3FontExt* pFont, LPCSTR szText, const 
                     lineWidth += charW;
                     p += charBytes;
                 }
-                szText = wordEnd;
+                szText = realEnd;
                 continue; // 词已处理完毕，跳过阶段 4
             }
         }
@@ -443,10 +461,10 @@ static void __stdcall SplitTextIntoLines(H3FontExt* pFont, LPCSTR szText, const 
         if (blankCount > 0)
             lineBuf.append(blankCount, ' ');
 
-        // 仅追加可见字符（颜色码已在 ForEachVisibleChar 中被跳过）
-        lineBuf.append(wordStart, static_cast<size_t>(wordEnd - wordStart));
+        // 保留颜色标记原始字节（PreprocessLine 将在渲染阶段剥离）
+        lineBuf.append(wordStart, static_cast<size_t>(realEnd - wordStart));
         lineWidth += wordWidth + blankWidth;
-        szText = wordEnd;
+        szText = realEnd;
     }
 
     // 输出最后一行
@@ -654,14 +672,18 @@ static void __stdcall H3Font_DrawText(HiHook* h, H3FontExt* pFont, char* szText,
 
         while (p < end)
         {
-            // 检查当前位置是否有颜色变更
-            if (stopIdx < stopCount)
+            // 检查当前位置是否有颜色变更（可能有多个 stop 堆在同一位置，如 }{~xxx}）
+            while (stopIdx < stopCount)
             {
                 const size_t bytePos = static_cast<size_t>(p - line.text.data());
                 if (line.stops[stopIdx].bytePos == bytePos)
                 {
                     curColor = line.stops[stopIdx].color;
                     ++stopIdx;
+                }
+                else
+                {
+                    break;
                 }
             }
 
