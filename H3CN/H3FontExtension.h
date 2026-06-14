@@ -65,60 +65,104 @@ namespace H3FontExtension
     };
 
     /**
-     * @brief 扩展字库（GBK 双字节汉字位图字体）
+     * @brief 扩展字库（统一使用 GDI/ClearType 实时渲染）
      *
-     * 从外部二进制文件加载，存储为灰度位图。
-     * 每个汉字固定宽高，通过区码/位码索引。
+     * 所有字符（ASCII 和 GBK 汉字）均通过系统 GDI 运行时渲染字形，
+     * 缓存抗锯齿 RGBA 数据和单个字符的像素宽度。
      */
     struct ExtFont
     {
     public:
-        PUINT8 FontFileBuffer = nullptr; ///< 字库位图数据缓冲区
-        INT8   Height          = 0;      ///< 单个汉字位图高度（像素）
-        int    Width           = 0;      ///< 单个汉字位图宽度（像素）
-        int    MarginLeft      = 0;      ///< 汉字左侧边距（像素）
-        int    MarginRight     = 0;      ///< 汉字右侧边距（像素）
-        int    MarginBottom    = 0;      ///< 汉字底部边距（像素）
-        int    GlyphWidth      = 0;      ///< 汉字总宽度 = MarginLeft + Width + MarginRight
-        bool   DrawShadow      = true;   ///< 是否绘制汉字阴影
-        //int LineHeightAdjust = 0;
+        // ---- 字体度量 ----
+        INT8   Height          = 0;      ///< 字形渲染高度（像素）
+        int    Width           = 0;      ///< 字形渲染宽度（像素，不含边距）
+        bool   Bold            = false;  ///< 是否加粗（true = FW_BOLD）
+        bool   AntiAlias       = true;   ///< 是否启用 ClearType 抗锯齿
+        int    MarginLeft      = 0;      ///< 左侧边距（像素）
+        int    MarginRight     = 0;      ///< 右侧边距（像素）
+        int    MarginBottom    = 0;      ///< 底部边距（像素），扩大学形缓冲区高度以容纳字体下降部分（如微软雅黑）
+        int    LineSpacing     = 0;      ///< 行间距（像素），增加行与行之间的额外空白
+        int    GlyphWidth      = 0;      ///< DIB 缓冲区宽度 = MarginLeft + Width + MarginRight
+        bool   DrawShadow      = true;   ///< 是否绘制阴影
+
+        /** @brief 返回有效字形高度（含底部边距） */
+        int EffectiveHeight() const { return Height + MarginBottom; }
+
+        // ---- GDI 渲染资源 ----
+        HDC     hdcGlyph     = nullptr;  ///< 字形渲染内存 DC
+        HBITMAP hbmGlyph     = nullptr;  ///< 字形渲染 32-bit DIB
+        void*   pGlyphBits   = nullptr;  ///< DIB 位图原始数据指针
+        HFONT   hGlyphFont   = nullptr;  ///< GDI 字体句柄
+
+        // ---- 字形缓存 ----
+        /// 字形 RGBA 缓存：wchar_t → RGBA 像素数据（GlyphWidth × Height × 4 字节）
+        mutable std::unordered_map<wchar_t, std::vector<uint8_t>> glyphCache;
+        /// 字符宽度缓存：wchar_t → GDI 测量的像素宽度（advance width，含左右边距）
+        mutable std::unordered_map<wchar_t, int> widthCache;
 
         ExtFont() = default;
 
         /**
-         * @brief 构造并加载扩展字库
-         * @param lpFileName    字库文件路径
-         * @param iHeight       单字高度
-         * @param iWidth        单字宽度
+         * @brief 构造并加载系统字体
+         * @param lpFileName    系统字体名（如 "SimSun", "Microsoft YaHei"）
+         * @param iHeight       字形渲染高度
+         * @param iWidth        字形渲染宽度
+         * @param bBold         是否加粗
+         * @param bAntiAlias    是否启用 ClearType 抗锯齿
          * @param iMarginLeft   左边距
          * @param iMarginRight  右边距
-         * @param iMarginBottom 底部边距
+         * @param iMarginBottom 底部边距（扩大学形缓冲区，用于容纳字体下降部分）
+         * @param iLineSpacing  行间距（增加行与行之间的额外空白）
          * @param bDrawShadow   是否绘制阴影
          */
-        ExtFont(LPCSTR lpFileName, int iHeight, int iWidth, int iMarginLeft, int iMarginRight, int iMarginBottom,
-            bool bDrawShadow/*, int lineHeightAdjust*/);
+        ExtFont(LPCSTR lpFileName, int iHeight, int iWidth, bool bBold, bool bAntiAlias,
+            int iMarginLeft, int iMarginRight, int iMarginBottom, int iLineSpacing, bool bDrawShadow);
+
+        /** @brief 释放 GDI 资源和字形缓存 */
+        ~ExtFont();
+
+        // 禁止拷贝（GDI 句柄不可浅拷贝），允许移动
+        ExtFont(const ExtFont&) = delete;
+        ExtFont& operator=(const ExtFont&) = delete;
+        ExtFont(ExtFont&& other) noexcept;
+        ExtFont& operator=(ExtFont&& other) noexcept;
 
         /**
-         * @brief 从二进制文件加载扩展字库数据
-         * @return 始终返回 false（游戏引擎约定）
+         * @brief 通过 GDI 加载系统字体
+         * @param fontName     系统字体名（如 "SimSun", "Microsoft YaHei"）
+         * @param iHeight      字形渲染高度
+         * @param iWidth       字形渲染宽度
+         * @param bBold        是否加粗
+         * @param bAntiAlias   是否启用 ClearType
+         * @param iMarginLeft  左边距
+         * @param iMarginRight 右边距
+         * @param iMarginBottom 底部边距
+         * @param iLineSpacing 行间距
+         * @param bDrawShadow  是否绘制阴影
          */
-        bool __fastcall LoadHzhFont(LPCSTR lpFileName, int iHeight, int iWidth, int iMarginLeft, int iMarginRight,
-            int iMarginBottom, bool bDrawShadow/*, int lineHeightAdjust*/);
+        bool __fastcall LoadGdiFont(const char* fontName, int iHeight, int iWidth, bool bBold, bool bAntiAlias,
+            int iMarginLeft, int iMarginRight, int iMarginBottom, int iLineSpacing, bool bDrawShadow);
 
         /**
-         * @brief 根据区码/位码获取汉字位图数据指针
-         * @param section  区码（高字节）
-         * @param position 位码（低字节）
-         * @return 该汉字位图在 FontFileBuffer 中的起始地址，无效编码返回 nullptr
+         * @brief GBK 区码/位码 → wchar_t 转换
          */
-        inline PUINT8 __fastcall GetExtGlyphDataPtr(UINT8 section, UINT8 position) const
-        {
-            if (section < DBCS_SECTION || position < DBCS_POSITION)
-                return nullptr;
-            return this->FontFileBuffer +
-                this->Width * this->Height * ((section - DBCS_SECTION) * 0xBF + position - DBCS_POSITION);
-        }
+        static wchar_t GbkToWchar(uint8_t section, uint8_t position);
+
+        /**
+         * @brief 获取字形的抗锯齿 RGBA 数据（按需 GDI 渲染 + 缓存）
+         * @return GlyphWidth×Height×4 字节 RGBA 数据指针，失败返回 nullptr
+         */
+        const uint8_t* GetGlyphRGBA(wchar_t ch) const;
+
+        /**
+         * @brief 获取单个字符的 GDI 渲染像素宽度（advance width，含左右边距）
+         * @note 首次调用时通过 GetTextExtentPoint32W 测量并缓存
+         */
+        int GetCharWidth(wchar_t ch) const;
     };
+
+    // ---- 色深自适应：从 surface 读取像素（用于 GDI 模式下 alpha 混合） ----
+    extern DWORD(__fastcall* ReadPixel)(const PUINT8 rowBuffer, int col);
 
     /**
      * @brief 扩展后的 H3Font 结构体（比原始 H3Font 多 8 字节）

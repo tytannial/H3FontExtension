@@ -14,104 +14,132 @@ BoxWidthMax    = -1     # 用于限制最大弹出提示框宽度(大于256生�
 
 # 字体映射定义
 # Name: H3字体名称（切勿修改）
-# ExtFont: H3字体对应的点阵字体
-# Height: 点阵字体高
-# Width: 点阵字体宽
-# MarginLeft: 左边距
-# MarginRight: 右边距
-# MarginBottom: 行距修正
-# MarginBottom: 行距修正
-# LineHeightAdjust: 行高调整，提高行高
+# ExtFont: 系统字体名（如 "SimSun", "Microsoft YaHei", "LiSu"）
+# Height: 字形渲染缓冲区高度（像素）
+# Width: 字形渲染缓冲区宽度（像素）
+# Bold: 是否加粗（true = FW_BOLD, false = FW_NORMAL）
+# AntiAlias: 是否启用抗锯齿（true = ClearType, false = 默认光栅化）
+# MarginLeft: 左边距（像素）
+# MarginRight: 右边距（像素）
+# MarginBottom: 底部扩展（像素），扩大学形缓冲区以容纳字体下降部分（如微软雅黑需要适当增大）
+# LineSpacing: 行间距（像素），增加行与行之间的额外空白
+# DrawShadow: 是否绘制阴影
 
 [[Fonts]]
 Name = "tiny.fnt"
-ExtFont = "Fonts/GBK_Tiny"
+ExtFont = "SimSun"
 Height = 10
 Width = 10
+Bold = false
+AntiAlias = false
 MarginLeft = 1
 MarginRight = 0
 MarginBottom = 0
+LineSpacing = 0
 DrawShadow = false
 
 [[Fonts]]
 Name = "smalfont.fnt"
-ExtFont = "Fonts/GBK_Small"
+ExtFont = "SimSun"
 Height = 12
 Width = 12
+Bold = false
+AntiAlias = true
 MarginLeft = 1
 MarginRight = 0
 MarginBottom = 0
+LineSpacing = 0
 DrawShadow = true
 
 [[Fonts]]
 Name = "medfont.fnt"
-ExtFont = "Fonts/GBK_Medium"
+ExtFont = "SimSun"
 Height = 16
 Width = 16
+Bold = false
+AntiAlias = true
 MarginLeft = 1
 MarginRight = 0
 MarginBottom = 0
+LineSpacing = 0
 DrawShadow = true
 
 [[Fonts]]
 Name = "bigfont.fnt"
-ExtFont = "Fonts/GBK_Big"
+ExtFont = "LiSu"
 Height = 24
 Width = 24
+Bold = false
+AntiAlias = true
 MarginLeft = 2
 MarginRight = 0
 MarginBottom = 0
+LineSpacing = 0
 DrawShadow = true
 
 [[Fonts]]
 Name = "calli10r.fnt"
-ExtFont = "Fonts/GBK_Small"
+ExtFont = "SimSun"
 Height = 12
 Width = 12
+Bold = false
+AntiAlias = true
 MarginLeft = 1
 MarginRight = 0
 MarginBottom = 0
+LineSpacing = 0
 DrawShadow = true
 
 [[Fonts]]
 Name = "credits.fnt"
-ExtFont = "Fonts/GBK_Big"
+ExtFont = "LiSu"
 Height = 24
 Width = 24
+Bold = false
+AntiAlias = true
 MarginLeft = 2
 MarginRight = 0
 MarginBottom = 0
+LineSpacing = 0
 DrawShadow = true
-LineHeightAdjust = 0
 
 [[Fonts]]
 Name = "hiscore.fnt"
-ExtFont = "Fonts/GBK_Small"
+ExtFont = "SimSun"
 Height = 12
 Width = 12
+Bold = false
+AntiAlias = true
 MarginLeft = 1
 MarginRight = 0
 MarginBottom = 0
+LineSpacing = 0
 DrawShadow = true
 
 [[Fonts]]
 Name = "times08r.fnt"
-ExtFont = "Fonts/GBK_Small"
+ExtFont = "SimSun"
 Height = 12
 Width = 12
+Bold = false
+AntiAlias = true
 MarginLeft = 1
 MarginRight = 0
 MarginBottom = 0
+LineSpacing = 0
 DrawShadow = true
 
 [[Fonts]]
 Name = "verd10b.fnt"
-ExtFont = "Fonts/GBK_Small"
+ExtFont = "SimSun"
 Height = 12
 Width = 12
+Bold = true
+AntiAlias = true
 MarginLeft = 1
 MarginRight = 0
 MarginBottom = 0
+LineSpacing = 0
 DrawShadow = true
 
 
