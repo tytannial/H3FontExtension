@@ -126,7 +126,7 @@ static const char* ForEachVisibleChar(H3FontExt* pFont, LPCSTR szText, Func&& fn
         uint8_t code = static_cast<uint8_t>(*szText);
 
         // -------- 跳过颜色码 --------
-        if (IsTextColorEnable && (code == '{' || code == '}'))
+        if (code == '{' || code == '}')
         {
             if (code == '{' && *(szText + 1) == '~')
             {
@@ -223,38 +223,46 @@ static void PreprocessLine(const TextLineStruct& src, DWORD defaultColor, DWORD 
             DWORD newColor = highlightColor;
             ++i;
 
-            if (IsTextColorEnable && i < len && raw[i] == '~')
+            if (i < len && raw[i] == '~')
             {
-                // 跳过 '~'，收集颜色码
-                ++i;
-                const size_t codeStart = i;
-                while (i < len && raw[i] != '}')
-                    ++i;
-
-                if (i > codeStart)
+                // 仅在颜色功能开启时解析自定义颜色值，否则跳过整个标签
+                if (IsTextColorEnable)
                 {
-                    if (raw[codeStart] == '#')
+                    ++i;
+                    const size_t codeStart = i;
+                    while (i < len && raw[i] != '}')
+                        ++i;
+
+                    if (i > codeStart)
                     {
-                        // #RRGGBB 格式：直接解析为十六进制整数
-                        DWORD c = 0;
-                        auto [_, ec] = std::from_chars(
-                            raw.data() + codeStart + 1,
-                            raw.data() + i,
-                            c, 16);
-                        newColor = (ec == std::errc()) ? c : defaultColor;
+                        if (raw[codeStart] == '#')
+                        {
+                            DWORD c = 0;
+                            auto [_, ec] = std::from_chars(
+                                raw.data() + codeStart + 1,
+                                raw.data() + i,
+                                c, 16);
+                            newColor = (ec == std::errc()) ? c : defaultColor;
+                        }
+                        else
+                        {
+                            std::string key(raw.data() + codeStart, i - codeStart);
+                            newColor = TextColorMap[key].value_or(defaultColor);
+                            if (newColor != defaultColor && !is32bit)
+                                newColor = RGB888toRGB565(newColor);
+                        }
                     }
                     else
                     {
-                        // 命名颜色：从配置表查询，16 位模式需转 RGB565
-                        std::string key(raw.data() + codeStart, i - codeStart);
-                        newColor = TextColorMap[key].value_or(defaultColor);
-                        if (newColor != defaultColor && !is32bit)
-                            newColor = RGB888toRGB565(newColor);
+                        newColor = defaultColor;
                     }
                 }
                 else
                 {
-                    newColor = defaultColor;
+                    // 颜色功能关闭：跳到 '}' 之后，颜色保持 highlightColor（黄色）
+                    ++i;
+                    while (i < len && raw[i] != '}')
+                        ++i;
                 }
 
                 // 跳过 '}'
@@ -262,7 +270,6 @@ static void PreprocessLine(const TextLineStruct& src, DWORD defaultColor, DWORD 
                     ++i;
             }
 
-            // 颜色有变化才记录 Stop
             if (newColor != curColor)
             {
                 curColor = newColor;
@@ -336,7 +343,7 @@ static void GetActiveColorState(const std::string& buf, std::string& outTag, boo
     outHighlight = false;
 
     const char* p = buf.c_str();
-    const char* end = p + buf.size();
+    const char* const end = p + buf.size();
 
     while (p < end)
     {
@@ -355,15 +362,28 @@ static void GetActiveColorState(const std::string& buf, std::string& outTag, boo
 
         if (*p == '{' && (p + 1 < end) && *(p + 1) == '~')
         {
-            // 自定义颜色标签 {~ColorName}
-            const char* start = p;
-            p += 2;
-            while (p < end && *p != '}')
-                ++p;
-            if (p < end && *p == '}')
-                ++p;
-            outTag.assign(start, p - start);
-            outHighlight = false;
+            // 自定义颜色标签 {~ColorName}：颜色关闭时等同高亮 {
+            if (IsTextColorEnable)
+            {
+                const char* start = p;
+                p += 2;
+                while (p < end && *p != '}')
+                    ++p;
+                if (p < end && *p == '}')
+                    ++p;
+                outTag.assign(start, p - start);
+                outHighlight = false;
+            }
+            else
+            {
+                p += 2;
+                while (p < end && *p != '}')
+                    ++p;
+                if (p < end && *p == '}')
+                    ++p;
+                outHighlight = true;
+                outTag.clear();
+            }
         }
         else if (*p == '{')
         {
@@ -397,6 +417,23 @@ static void __stdcall SplitTextIntoLines(H3FontExt* pFont, LPCSTR szText, const 
 
     std::string lineBuf;
     int lineWidth = 0;
+
+    // 推送当前行并继承颜色状态到下一行
+    auto pushAndInheritLine = [&]()
+    {
+        std::string activeTag;
+        bool highlightActive = false;
+        GetActiveColorState(lineBuf, activeTag, highlightActive);
+
+        lines.push_back({ std::move(lineBuf), lineWidth });
+        lineBuf.clear();
+        lineWidth = 0;
+
+        if (!activeTag.empty())
+            lineBuf = activeTag;
+        else if (highlightActive)
+            lineBuf.push_back('{');
+    };
 
     // ============ 主循环：按词为单位处理 ============
     while (*szText)
@@ -459,22 +496,7 @@ static void __stdcall SplitTextIntoLines(H3FontExt* pFont, LPCSTR szText, const 
         if (lineWidth + wordWidth + blankWidth > iBoxWidth)
         {
             if (lineWidth > 0)
-            {
-                // 提取前行的颜色状态，供下一行继承
-                std::string activeTag;
-                bool highlightActive = false;
-                GetActiveColorState(lineBuf, activeTag, highlightActive);
-
-                lines.push_back({ std::move(lineBuf), lineWidth });
-                lineBuf.clear();
-                lineWidth = 0;
-
-                // 下一行继承前行的 {~ColorName} 或 { 高亮
-                if (!activeTag.empty())
-                    lineBuf = activeTag;
-                else if (highlightActive)
-                    lineBuf.push_back('{');
-            }
+                pushAndInheritLine();
             blankCount = 0;
             blankWidth = 0;
 
@@ -487,7 +509,7 @@ static void __stdcall SplitTextIntoLines(H3FontExt* pFont, LPCSTR szText, const 
                     const uint8_t code = static_cast<uint8_t>(*p);
 
                     // ---- 颜色标记：保留到行缓冲但不计入宽度 ----
-                    if (IsTextColorEnable && (code == '{' || code == '}'))
+                    if (code == '{' || code == '}')
                     {
                         if (code == '{' && (p + 1 < realEnd) && *(p + 1) == '~')
                         {
@@ -512,22 +534,7 @@ static void __stdcall SplitTextIntoLines(H3FontExt* pFont, LPCSTR szText, const 
                     const int charBytes = GetCharMetrics(code, nextCode, widthArr, glyphWidth, charW);
 
                     if (lineWidth + charW > iBoxWidth && lineWidth > 0)
-                    {
-                        // 提取前行的颜色状态，供下一行继承
-                        std::string activeTag;
-                        bool highlightActive = false;
-                        GetActiveColorState(lineBuf, activeTag, highlightActive);
-
-                        lines.push_back({ std::move(lineBuf), lineWidth });
-                        lineBuf.clear();
-                        lineWidth = 0;
-
-                        // 下一行继承前行的 {~ColorName} 或 { 高亮
-                        if (!activeTag.empty())
-                            lineBuf = activeTag;
-                        else if (highlightActive)
-                            lineBuf.push_back('{');
-                    }
+                        pushAndInheritLine();
 
                     lineBuf.append(p, charBytes);
                     lineWidth += charW;
@@ -743,8 +750,9 @@ static void __stdcall H3Font_DrawText(HiHook* h, H3FontExt* pFont, char* szText,
         }
 
         int curX = iX + startX;
-        const char* p = line.text.data();
-        const char* end = p + line.text.size();
+        const char* const textData = line.text.data();
+        const char* p = textData;
+        const char* const end = p + line.text.size();
 
         // 颜色跟踪（无颜色变更时 stops 为空，全程用 defaultColor）
         DWORD curColor = defaultColor;
@@ -754,18 +762,11 @@ static void __stdcall H3Font_DrawText(HiHook* h, H3FontExt* pFont, char* szText,
         while (p < end)
         {
             // 检查当前位置是否有颜色变更（可能有多个 stop 堆在同一位置，如 }{~xxx}）
-            while (stopIdx < stopCount)
+            const size_t bytePos = static_cast<size_t>(p - textData);
+            while (stopIdx < stopCount && line.stops[stopIdx].bytePos == bytePos)
             {
-                const size_t bytePos = static_cast<size_t>(p - line.text.data());
-                if (line.stops[stopIdx].bytePos == bytePos)
-                {
-                    curColor = line.stops[stopIdx].color;
-                    ++stopIdx;
-                }
-                else
-                {
-                    break;
-                }
+                curColor = line.stops[stopIdx].color;
+                ++stopIdx;
             }
 
             const uint8_t code = static_cast<uint8_t>(*p);
