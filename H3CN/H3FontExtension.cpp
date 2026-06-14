@@ -270,6 +270,9 @@ namespace H3FontExtension
     // 游戏支持 16 位（RGB565）和 32 位（RGB888）两种色深模式。
     // 通过函数指针在 DDraw 初始化时动态绑定对应实现。
 
+    /** @brief 当前是否为 32 位色深模式 */
+    static bool Is32BitMode = false;
+
     /** @brief 16 位色深：从调色板获取颜色 */
     static DWORD __fastcall GetColor16(const H3BasePalette565& palette, int colorIdx)
     {
@@ -285,38 +288,57 @@ namespace H3FontExtension
     /** @brief 色深自适应：获取调色板颜色的函数指针 */
     DWORD(__fastcall* GetColor)(const H3BasePalette565& palette, int colorIdx);
 
-    /** @brief 16 位色深：写入一个像素到行缓冲区 */
-    static void __fastcall DrawPixcel16(const PUINT8 rowBuffer, int col, DWORD color)
+    /** @brief 32 位色深：alpha 混合前景色（读 bg → 混合 fgColor → 写 R8G8B8） */
+    static void __fastcall BlendPixel32(const PUINT8 rowBuf, int col, DWORD fgColor, uint8_t alpha)
     {
-        *((WORD*)rowBuffer + col) = (WORD)color;
+        const DWORD bg = *((DWORD*)rowBuf + col);
+        const uint8_t br = (bg >> 16) & 0xFF, bgg = (bg >> 8) & 0xFF, bb = bg & 0xFF;
+        const uint8_t fr = (fgColor >> 16) & 0xFF, fgg = (fgColor >> 8) & 0xFF, fb = fgColor & 0xFF;
+        *((DWORD*)rowBuf + col) =
+            ((((fr * alpha + br * (255 - alpha)) / 255) << 16) |
+             (((fgg * alpha + bgg * (255 - alpha)) / 255) << 8) |
+             (((fb * alpha + bb * (255 - alpha)) / 255)));
     }
 
-    /** @brief 32 位色深：写入一个像素到行缓冲区 */
-    static void __fastcall DrawPixcel32(const PUINT8 rowBuffer, int col, DWORD color)
+    /** @brief 16 位色深：alpha 混合前景色（读 RGB565 → 展开 8-bit 通道混合 → 写回 RGB565） */
+    static void __fastcall BlendPixel16(const PUINT8 rowBuf, int col, DWORD fgColor, uint8_t alpha)
     {
-        *((DWORD*)rowBuffer + col) = color;
+        const DWORD bg = *((WORD*)rowBuf + col);
+        const uint8_t br = ((bg >> 11) & 0x1F) << 3;
+        const uint8_t bgg = ((bg >> 5) & 0x3F) << 2;
+        const uint8_t bb = (bg & 0x1F) << 3;
+        const uint8_t fr = ((fgColor >> 11) & 0x1F) << 3;
+        const uint8_t fgg = ((fgColor >> 5) & 0x3F) << 2;
+        const uint8_t fb = (fgColor & 0x1F) << 3;
+        *((WORD*)rowBuf + col) = (WORD)(
+            (((((fr * alpha + br * (255 - alpha)) / 255) >> 3) << 11) |
+             ((((fgg * alpha + bgg * (255 - alpha)) / 255) >> 2) << 5) |
+             (((fb * alpha + bb * (255 - alpha)) / 255) >> 3)));
     }
 
-    /** @brief 色深自适应：绘制像素的函数指针 */
-    void(__fastcall* DrawPixcel)(const PUINT8 rowBuffer, int col, DWORD color);
+    /** @brief 色深自适应：alpha 混合前景色的函数指针 */
+    void(__fastcall* BlendPixel)(const PUINT8 rowBuf, int col, DWORD fgColor, uint8_t alpha);
 
-    /** @brief 16 位色深：从行缓冲区读取一个像素（用于 GDI alpha 混合） */
-    static DWORD __fastcall ReadPixel16(const PUINT8 rowBuffer, int col)
+    /** @brief 32 位色深：alpha 混合阴影色 */
+    static void __fastcall BlendShadow32(const PUINT8 rowBuf, int col, DWORD shadowColor, uint8_t alpha)
     {
-        return *((WORD*)rowBuffer + col);
+        const DWORD bg = *((DWORD*)rowBuf + col);
+        const uint8_t sr = (shadowColor >> 16) & 0xFF, sg = (shadowColor >> 8) & 0xFF, sb = shadowColor & 0xFF;
+        const uint8_t br = (bg >> 16) & 0xFF, bgg = (bg >> 8) & 0xFF, bb = bg & 0xFF;
+        *((DWORD*)rowBuf + col) =
+            ((((sr * alpha + br * (255 - alpha)) / 255) << 16) |
+             (((sg * alpha + bgg * (255 - alpha)) / 255) << 8) |
+             (((sb * alpha + bb * (255 - alpha)) / 255)));
     }
 
-    /** @brief 32 位色深：从行缓冲区读取一个像素（用于 GDI alpha 混合） */
-    static DWORD __fastcall ReadPixel32(const PUINT8 rowBuffer, int col)
+    /** @brief 16 位色深：阴影直接写入（不混合 alpha，保持原风格） */
+    static void __fastcall BlendShadow16(const PUINT8 rowBuf, int col, DWORD shadowColor, uint8_t)
     {
-        return *((DWORD*)rowBuffer + col);
+        *((WORD*)rowBuf + col) = (WORD)shadowColor;
     }
 
-    /** @brief 色深自适应：读取像素的函数指针 */
-    DWORD(__fastcall* ReadPixel)(const PUINT8 rowBuffer, int col);
-
-    /** @brief 当前是否为 32 位色深模式（GDI alpha 混合需要） */
-    static bool Is32BitMode = false;
+    /** @brief 色深自适应：alpha 混合阴影色的函数指针 */
+    void(__fastcall* BlendShadow)(const PUINT8 rowBuf, int col, DWORD shadowColor, uint8_t alpha);
 
     // ============================================================
     // Section 3: 文本扫描与处理
@@ -862,53 +884,12 @@ namespace H3FontExtension
 
                 const int px = iX + colIdx;
 
-                // ====== Alpha 混合前景色 ======
-                const DWORD bgPixel = ReadPixel(rowBuf, px);
-                const DWORD fg = uFontColor;
+                // Alpha 混合前景色（读 bg → 混合 fgColor → 写入）
+                BlendPixel(rowBuf, px, uFontColor, alpha);
 
-                if (Is32BitMode) // 32-bit: R8G8B8
-                {
-                    const uint8_t br = (bgPixel >> 16) & 0xFF, bgg = (bgPixel >> 8) & 0xFF, bb = bgPixel & 0xFF;
-                    const uint8_t fr = (fg >> 16) & 0xFF, fgg = (fg >> 8) & 0xFF, fb = fg & 0xFF;
-                    const uint8_t outR = (uint8_t)((fr * alpha + br * (255 - alpha)) / 255);
-                    const uint8_t outG = (uint8_t)((fgg * alpha + bgg * (255 - alpha)) / 255);
-                    const uint8_t outB = (uint8_t)((fb * alpha + bb * (255 - alpha)) / 255);
-                    DrawPixcel(rowBuf, px, (outR << 16) | (outG << 8) | outB);
-                }
-                else // 16-bit: RGB565
-                {
-                    const uint8_t br = ((bgPixel >> 11) & 0x1F) << 3;
-                    const uint8_t bgg = ((bgPixel >> 5) & 0x3F) << 2;
-                    const uint8_t bb = (bgPixel & 0x1F) << 3;
-                    const uint8_t fr = ((fg >> 11) & 0x1F) << 3;
-                    const uint8_t fgg = ((fg >> 5) & 0x3F) << 2;
-                    const uint8_t fb = (fg & 0x1F) << 3;
-                    const uint8_t outR = (uint8_t)((fr * alpha + br * (255 - alpha)) / 255);
-                    const uint8_t outG = (uint8_t)((fgg * alpha + bgg * (255 - alpha)) / 255);
-                    const uint8_t outB = (uint8_t)((fb * alpha + bb * (255 - alpha)) / 255);
-                    DrawPixcel(rowBuf, px,
-                        ((outR >> 3) << 11) | ((outG >> 2) << 5) | (outB >> 3));
-                }
-
-                // ====== Alpha 混合阴影（右下偏移 1 像素） ======
-                if (!shadowRowBuf)
-                    continue;
-
-                const DWORD shadowBg = ReadPixel(shadowRowBuf, px + 1);
-                if (Is32BitMode)
-                {
-                    const uint8_t sr = (ShadowColor >> 16) & 0xFF, sg = (ShadowColor >> 8) & 0xFF, sb = ShadowColor & 0xFF;
-                    const uint8_t br = (shadowBg >> 16) & 0xFF, s_bg = (shadowBg >> 8) & 0xFF, bb = shadowBg & 0xFF;
-                    const uint8_t outR = (uint8_t)((sr * alpha + br * (255 - alpha)) / 255);
-                    const uint8_t outG = (uint8_t)((sg * alpha + s_bg * (255 - alpha)) / 255);
-                    const uint8_t outB = (uint8_t)((sb * alpha + bb * (255 - alpha)) / 255);
-                    DrawPixcel(shadowRowBuf, px + 1, (outR << 16) | (outG << 8) | outB);
-                }
-                else
-                {
-                    // 16-bit: 阴影直接用 ShadowColor（不需要 alpha 混合，保持原风格）
-                    DrawPixcel(shadowRowBuf, px + 1, ShadowColor);
-                }
+                // Alpha 混合阴影（右下偏移 1 像素）
+                if (shadowRowBuf)
+                    BlendShadow(shadowRowBuf, px + 1, ShadowColor, alpha);
             }
         }
 
@@ -1285,14 +1266,14 @@ namespace H3FontExtension
         if (Is32BitMode)
         {
             GetColor = GetColor32;
-            DrawPixcel = DrawPixcel32;
-            ReadPixel = ReadPixel32;
+            BlendPixel = BlendPixel32;
+            BlendShadow = BlendShadow32;
         }
         else
         {
             GetColor = GetColor16;
-            DrawPixcel = DrawPixcel16;
-            ReadPixel = ReadPixel16;
+            BlendPixel = BlendPixel16;
+            BlendShadow = BlendShadow16;
         }
 
         auto maxWidth = H3GameWidth::Get() - 64 * 2;
