@@ -28,8 +28,8 @@ BoxWidthMax    = -1     # 用于限制最大弹出提示框宽度(大于256生�
 [[Fonts]]
 Name = "tiny.fnt"
 ExtFont = "SimSun"
-Height = 10
-Width = 10
+Height = 12
+Width = 12
 Bold = false
 AntiAlias = false
 MarginLeft = 1
