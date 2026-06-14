@@ -324,6 +324,66 @@ static void PreprocessLine(const TextLineStruct& src, DWORD defaultColor, DWORD 
  * @param iBoxWidth 文本框像素宽度
  * @param lines     [out] 拆分结果（含颜色码的原始行）
  */
+/**
+ * @brief 扫描行缓冲，提取末尾活跃的颜色状态（用于跨行继承）
+ *
+ * 当拆行推送 lineBuf 后，下一行需从头继承前行的颜色（{~ColorName} 或 { 高亮）。
+ * 本函数遍历整个 buffer，追踪 {~...} / { / } 的状态变化，返回最终活跃状态。
+ */
+static void GetActiveColorState(const std::string& buf, std::string& outTag, bool& outHighlight)
+{
+    outTag.clear();
+    outHighlight = false;
+
+    const char* p = buf.c_str();
+    const char* end = p + buf.size();
+
+    while (p < end)
+    {
+        const uint8_t b = static_cast<uint8_t>(*p);
+
+        // 跳过双字节 GBK 字符，避免第二字节碰巧为 0x7B/0x7D 造成误判
+        if (!IsSingleByte(b) && (p + 1 < end))
+        {
+            const uint8_t nb = static_cast<uint8_t>(*(p + 1));
+            if (IsDBCSLeadByte(b, nb))
+            {
+                p += 2;
+                continue;
+            }
+        }
+
+        if (*p == '{' && (p + 1 < end) && *(p + 1) == '~')
+        {
+            // 自定义颜色标签 {~ColorName}
+            const char* start = p;
+            p += 2;
+            while (p < end && *p != '}')
+                ++p;
+            if (p < end && *p == '}')
+                ++p;
+            outTag.assign(start, p - start);
+            outHighlight = false;
+        }
+        else if (*p == '{')
+        {
+            outHighlight = true;
+            outTag.clear();
+            ++p;
+        }
+        else if (*p == '}')
+        {
+            outHighlight = false;
+            outTag.clear();
+            ++p;
+        }
+        else
+        {
+            ++p;
+        }
+    }
+}
+
 static void __stdcall SplitTextIntoLines(H3FontExt* pFont, LPCSTR szText, const int iBoxWidth,
     vector<TextLineStruct>& lines)
 {
@@ -400,10 +460,20 @@ static void __stdcall SplitTextIntoLines(H3FontExt* pFont, LPCSTR szText, const 
         {
             if (lineWidth > 0)
             {
-                // 当前行已非空，先输出当前行
+                // 提取前行的颜色状态，供下一行继承
+                std::string activeTag;
+                bool highlightActive = false;
+                GetActiveColorState(lineBuf, activeTag, highlightActive);
+
                 lines.push_back({ std::move(lineBuf), lineWidth });
                 lineBuf.clear();
                 lineWidth = 0;
+
+                // 下一行继承前行的 {~ColorName} 或 { 高亮
+                if (!activeTag.empty())
+                    lineBuf = activeTag;
+                else if (highlightActive)
+                    lineBuf.push_back('{');
             }
             blankCount = 0;
             blankWidth = 0;
@@ -443,9 +513,20 @@ static void __stdcall SplitTextIntoLines(H3FontExt* pFont, LPCSTR szText, const 
 
                     if (lineWidth + charW > iBoxWidth && lineWidth > 0)
                     {
+                        // 提取前行的颜色状态，供下一行继承
+                        std::string activeTag;
+                        bool highlightActive = false;
+                        GetActiveColorState(lineBuf, activeTag, highlightActive);
+
                         lines.push_back({ std::move(lineBuf), lineWidth });
                         lineBuf.clear();
                         lineWidth = 0;
+
+                        // 下一行继承前行的 {~ColorName} 或 { 高亮
+                        if (!activeTag.empty())
+                            lineBuf = activeTag;
+                        else if (highlightActive)
+                            lineBuf.push_back('{');
                     }
 
                     lineBuf.append(p, charBytes);
