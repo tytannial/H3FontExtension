@@ -65,9 +65,18 @@ namespace H3FontExtension
         if (this != &other)
         {
             // 先释放当前资源
-            if (hGlyphFont) { DeleteObject(hGlyphFont); }
-            if (hbmGlyph) { DeleteObject(hbmGlyph); }
-            if (hdcGlyph) { DeleteDC(hdcGlyph); }
+            if (hGlyphFont)
+            {
+                DeleteObject(hGlyphFont);
+            }
+            if (hbmGlyph)
+            {
+                DeleteObject(hbmGlyph);
+            }
+            if (hdcGlyph)
+            {
+                DeleteDC(hdcGlyph);
+            }
 
             // 转移数据
             Height = other.Height; Width = other.Width;
@@ -329,8 +338,8 @@ namespace H3FontExtension
         const uint8_t fr = (fgColor >> 16) & 0xFF, fgg = (fgColor >> 8) & 0xFF, fb = fgColor & 0xFF;
         *((DWORD*)rowBuf + col) =
             ((((fr * alpha + br * (255 - alpha)) / 255) << 16) |
-             (((fgg * alpha + bgg * (255 - alpha)) / 255) << 8) |
-             (((fb * alpha + bb * (255 - alpha)) / 255)));
+                (((fgg * alpha + bgg * (255 - alpha)) / 255) << 8) |
+                (((fb * alpha + bb * (255 - alpha)) / 255)));
     }
 
     /** @brief 16 位色深：alpha 混合前景色（读 RGB565 → 展开 8-bit 通道混合 → 写回 RGB565） */
@@ -345,8 +354,8 @@ namespace H3FontExtension
         const uint8_t fb = (fgColor & 0x1F) << 3;
         *((WORD*)rowBuf + col) = (WORD)(
             (((((fr * alpha + br * (255 - alpha)) / 255) >> 3) << 11) |
-             ((((fgg * alpha + bgg * (255 - alpha)) / 255) >> 2) << 5) |
-             (((fb * alpha + bb * (255 - alpha)) / 255) >> 3)));
+                ((((fgg * alpha + bgg * (255 - alpha)) / 255) >> 2) << 5) |
+                (((fb * alpha + bb * (255 - alpha)) / 255) >> 3)));
     }
 
     /** @brief 色深自适应：alpha 混合前景色的函数指针 */
@@ -360,8 +369,8 @@ namespace H3FontExtension
         const uint8_t br = (bg >> 16) & 0xFF, bgg = (bg >> 8) & 0xFF, bb = bg & 0xFF;
         *((DWORD*)rowBuf + col) =
             ((((sr * alpha + br * (255 - alpha)) / 255) << 16) |
-             (((sg * alpha + bgg * (255 - alpha)) / 255) << 8) |
-             (((sb * alpha + bb * (255 - alpha)) / 255)));
+                (((sg * alpha + bgg * (255 - alpha)) / 255) << 8) |
+                (((sb * alpha + bb * (255 - alpha)) / 255)));
     }
 
     /** @brief 16 位色深：阴影直接写入（不混合 alpha，保持原风格） */
@@ -1027,8 +1036,8 @@ namespace H3FontExtension
             if (line.lineWidth == 0)
                 continue;
 
-            const int lineY = iY + startY + rowIdx * fontHeight;
-            if (lineY + pFont->oriHeight > bottomBound)
+            // 防止法术书计算有误
+            if (iY + startY + (rowIdx + 1) * pFont->oriHeight > bottomBound)
                 break;
 
             // 水平对齐
@@ -1049,6 +1058,7 @@ namespace H3FontExtension
             size_t stopIdx = 0;
             const size_t stopCount = line.stops.size();
 
+            const int lineY = iY + startY + rowIdx * fontHeight;
             while (p < end)
             {
                 // 检查当前位置是否有颜色变更
