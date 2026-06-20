@@ -185,6 +185,39 @@ namespace H3FontExtension
     }
 
     /**
+     * @brief 判断 wchar_t 是否在 GBK 可表示范围内
+     *
+     * 直接通过 Unicode 区间判断，无需 API 调用。
+     * 非 GBK 字符由 GDI 绘制为方块（tofu），提前过滤可避免渲染开销。
+     */
+    bool ExtFont::IsGbkChar(wchar_t wch)
+    {
+        // ASCII 可打印 (U+0020..U+007E)
+        if (wch >= 0x20 && wch <= 0x7E)
+            return true;
+        // CJK 核心汉字 (U+4E00..U+9FFF) —— 覆盖 99% 常用中文
+        if (wch >= 0x4E00 && wch <= 0x9FFF)
+            return true;
+
+        return (wch >= 0x3000 && wch <= 0x303F)  // CJK 标点符号
+            || (wch >= 0x3400 && wch <= 0x4DBF)  // CJK 扩展 A
+            || (wch >= 0xF900 && wch <= 0xFAFF)  // CJK 兼容汉字
+            || (wch >= 0xFF00 && wch <= 0xFFEF)  // 全角/半角形式（含全角字母数字）
+            || (wch >= 0xFE30 && wch <= 0xFE4F)  // CJK 兼容形式
+            || (wch >= 0x3040 && wch <= 0x30FF)  // 日文假名（GBK 包含）
+            || (wch >= 0x2010 && wch <= 0x2040)  // 通用标点（破折号等）
+            || (wch >= 0x3105 && wch <= 0x3129)  // 注音符号
+            || (wch >= 0x2160 && wch <= 0x24FF)  // 罗马数字 / 带圈字母数字
+            || (wch >= 0x2500 && wch <= 0x25FF)  // 表格线 / 方块元素
+            || (wch >= 0x2600 && wch <= 0x26FF)  // 杂项符号
+            || (wch >= 0x2190 && wch <= 0x22FF)  // 箭头 / 数学符号
+            || (wch >= 0x31C0 && wch <= 0x31EF)  // CJK 笔画
+            || (wch >= 0x3220 && wch <= 0x32B0)  // 带圈汉字
+            || (wch >= 0xE000 && wch <= 0xF8FF)  // 私有使用区
+            ;
+    }
+
+    /**
      * @brief 获取字形的抗锯齿 RGBA 数据（按需 GDI 渲染 + 缓存）
      *
      * 渲染流程：
@@ -863,6 +896,10 @@ namespace H3FontExtension
             wch = ExtFont::GbkToWchar(cHiCode, cLoCode);
         }
 
+        // 非 GBK 字符 → 跳过（避免 GDI 渲染为方块）
+        if (!ExtFont::IsGbkChar(wch))
+            return false;
+
         const uint8_t* glyph = cFont->GetGlyphRGBA(wch);
         if (!glyph)
             return false;
@@ -991,7 +1028,7 @@ namespace H3FontExtension
                 continue;
 
             const int lineY = iY + startY + rowIdx * fontHeight;
-            if (lineY + fontHeight > bottomBound)
+            if (lineY + pFont->oriHeight > bottomBound)
                 break;
 
             // 水平对齐

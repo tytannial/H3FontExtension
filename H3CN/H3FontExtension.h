@@ -149,6 +149,11 @@ namespace H3FontExtension
         static wchar_t GbkToWchar(uint8_t section, uint8_t position);
 
         /**
+         * @brief 判断字符是否在 GBK 可表示范围（非 GBK 字符 → 跳过以避方块）
+         */
+        static bool IsGbkChar(wchar_t wch);
+
+        /**
          * @brief 获取字形的抗锯齿 RGBA 数据（按需 GDI 渲染 + 缓存）
          * @return GlyphWidth×Height×4 字节 RGBA 数据指针，失败返回 nullptr
          */
