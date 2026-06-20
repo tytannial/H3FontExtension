@@ -934,8 +934,14 @@ namespace H3FontExtension
                 BlendPixel(rowBuf, px, uFontColor, alpha);
 
                 // Alpha 混合阴影（右下偏移 1 像素）
+                // 若目标位置会被字形自身像素覆盖则跳过，避免黑色融入字体内部
                 if (shadowRowBuf)
-                    BlendShadow(shadowRowBuf, px + 1, ShadowColor, alpha);
+                {
+                    const bool overlap = (rowIdx + 1 < glyphH && colIdx + 1 < glyphW)
+                        && glyph[((rowIdx + 1) * glyphW + (colIdx + 1)) * 4 + 3] > 0;
+                    if (!overlap)
+                        BlendShadow(shadowRowBuf, px + 1, ShadowColor, alpha);
+                }
             }
         }
 
