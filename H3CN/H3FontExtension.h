@@ -1,14 +1,11 @@
 #pragma once
 
+#include <string>
+#include <vector>
 #include <unordered_map>
-
-#include <toml.hpp>
 
 #define _H3API_PATCHER_X86_
 #include <H3API.hpp>
-
-static Patcher* _P;
-static PatcherInstance* _PI;
 
 namespace H3FontExtension
 {
@@ -68,7 +65,10 @@ namespace H3FontExtension
      * @brief 扩展字库（统一使用 GDI/ClearType 实时渲染）
      *
      * 所有字符（ASCII 和 GBK 汉字）均通过系统 GDI 运行时渲染字形，
-     * 缓存抗锯齿 RGBA 数据和单个字符的像素宽度。
+     * 缓存抗锯齿 alpha 数据和单个字符的像素宽度。
+     *
+     * 字形缓存仅保存 alpha 通道（1 字节/像素）：绘制时前景色来自
+     * 调色板，字形自身的 RGB 不参与混合，只用作透明度掩膜。
      */
     struct ExtFont
     {
@@ -93,9 +93,11 @@ namespace H3FontExtension
         HBITMAP hbmGlyph     = nullptr;  ///< 字形渲染 32-bit DIB
         void*   pGlyphBits   = nullptr;  ///< DIB 位图原始数据指针
         HFONT   hGlyphFont   = nullptr;  ///< GDI 字体句柄
+        HGDIOBJ hOldBitmap   = nullptr;  ///< DIB 选入 DC 前的原位图（释放时恢复）
+        HGDIOBJ hOldFont     = nullptr;  ///< 字体选入 DC 前的原字体（释放时恢复）
 
         // ---- 字形缓存 ----
-        /// 字形 RGBA 缓存：wchar_t → RGBA 像素数据（GlyphWidth × Height × 4 字节）
+        /// 字形 alpha 缓存：wchar_t → alpha 掩膜（GlyphWidth × EffectiveHeight 字节）
         mutable std::unordered_map<wchar_t, std::vector<uint8_t>> glyphCache;
         /// 字符宽度缓存：wchar_t → GDI 测量的像素宽度（advance width，含左右边距）
         mutable std::unordered_map<wchar_t, int> widthCache;
@@ -144,7 +146,7 @@ namespace H3FontExtension
             int iMarginLeft, int iMarginRight, int iMarginBottom, int iLineSpacing, bool bDrawShadow);
 
         /**
-         * @brief GBK 区码/位码 → wchar_t 转换
+         * @brief GBK 区码/位码 → wchar_t 转换（带全局查表缓存，避免重复调用 MultiByteToWideChar）
          */
         static wchar_t GbkToWchar(uint8_t section, uint8_t position);
 
@@ -154,20 +156,21 @@ namespace H3FontExtension
         static bool IsGbkChar(wchar_t wch);
 
         /**
-         * @brief 获取字形的抗锯齿 RGBA 数据（按需 GDI 渲染 + 缓存）
-         * @return GlyphWidth×Height×4 字节 RGBA 数据指针，失败返回 nullptr
+         * @brief 获取字形的抗锯齿 alpha 掩膜（按需 GDI 渲染 + 缓存）
+         * @return GlyphWidth×EffectiveHeight 字节 alpha 数据指针，失败返回 nullptr
          */
-        const uint8_t* GetGlyphRGBA(wchar_t ch) const;
+        const uint8_t* GetGlyphAlpha(wchar_t ch) const;
 
         /**
          * @brief 获取单个字符的 GDI 渲染像素宽度（advance width，含左右边距）
          * @note 首次调用时通过 GetTextExtentPoint32W 测量并缓存
          */
         int GetCharWidth(wchar_t ch) const;
-    };
 
-    // ---- 色深自适应：从 surface 读取像素（用于 GDI 模式下 alpha 混合） ----
-    extern DWORD(__fastcall* ReadPixel)(const PUINT8 rowBuffer, int col);
+    private:
+        /** @brief 释放全部 GDI 资源（先恢复原对象再删除，避免句柄泄漏） */
+        void ReleaseGdiResources();
+    };
 
     /**
      * @brief 扩展后的 H3Font 结构体（比原始 H3Font 多 8 字节）
@@ -203,38 +206,8 @@ namespace H3FontExtension
     };
 
     // ============================================================
-    // 全局状态
-    // ============================================================
-
-    /** @brief 是否启用文本颜色功能 */
-    static bool IsTextColorEnable = true;
-
-    /** @brief 命名颜色映射表（从配置文件加载） */
-    static toml::table TextColorMap;
-
-    /** @brief 文本框最小宽度限制 */
-    static int BoxWidthMin = 0;
-
-    /** @brief 文本框最大宽度限制 */
-    static int BoxWidthMax = 0;
-
-    /** @brief 字体名 → 扩展字库映射表（key 为小写字体名，如 "medfont.fnt"） */
-    static std::unordered_map<std::string, ExtFont> g_ExtFontTable;
-
-    // ============================================================
     // 内联工具函数
     // ============================================================
-
-    /**
-     * @brief 计算单个 ASCII 字符的渲染宽度
-     * @param widthArr H3 字体间距表
-     * @param code     字符编码
-     * @return 像素宽度 = 左边距 + 字形跨度 + 右边距
-     */
-    inline static int GetH3CharWidth(const h3::H3Font::FontSpacing* widthArr, uint8_t code)
-    {
-        return widthArr[code].leftMargin + widthArr[code].span + widthArr[code].rightMargin;
-    }
 
     /**
      * @brief 判断当前字节是否为合法的双字节字符首字节（GBK/DBCS）
@@ -255,32 +228,6 @@ namespace H3FontExtension
     inline static bool IsSingleByte(uint8_t code)
     {
         return code < DBCS_SECTION || code == 0xFF;
-    }
-
-    /**
-     * @brief 获取一个字符的字节数和渲染宽度
-     * @param code       当前字节
-     * @param nextCode   下一字节（用于双字节合法性判定）
-     * @param widthArr   ASCII 字体宽度表
-     * @param glyphWidth 双字节字符固定宽度
-     * @param outWidth   [out] 该字符的像素宽度
-     * @return 字符所占字节数（1 或 2），无效编码返回 1 且宽度为 0
-     */
-    inline static int GetCharMetrics(uint8_t code, uint8_t nextCode,
-        const h3::H3Font::FontSpacing* widthArr, int glyphWidth, int& outWidth)
-    {
-        if (IsSingleByte(code))
-        {
-            outWidth = GetH3CharWidth(widthArr, code);
-            return 1;
-        }
-        if (IsDBCSLeadByte(code, nextCode))
-        {
-            outWidth = glyphWidth;
-            return 2;
-        }
-        outWidth = 0;
-        return 1; // 无效双字节首字节，当单字节跳过
     }
 
     /**

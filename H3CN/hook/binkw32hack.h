@@ -1,7 +1,7 @@
 #pragma once
 
-HINSTANCE hOriginalBinkW32 = NULL;
-FARPROC hFuncEntry[72] = { 0 };
+static HINSTANCE hOriginalBinkW32 = NULL;
+static FARPROC hFuncEntry[72] = { 0 };
 
 static void LoadBinkw32FuncEntry()
 {
