@@ -1199,11 +1199,12 @@ namespace H3FontExtension
      * @param defaultColor 默认渲染颜色
      * @param shift       字形在行高内的垂直居中偏移
      * @param fontHeight  行高
+     * @param cursorPos   输入光标位置（可见字符索引，-1 = 无光标；每行从 0 起算）
      */
     template<bool Is32>
     static void DrawLines(H3FontExt* pFont, H3LoadedPcx16* pPcx, const std::vector<CleanLine>& textLines,
         int iX, int iY, int startY, int iBoxWidth, int iBoxHeight, uint32_t uAlignFlags,
-        DWORD defaultColor, int shift, int fontHeight)
+        DWORD defaultColor, int shift, int fontHeight, int cursorPos)
     {
         auto* extFont = pFont->ExtData;
         const int lineCount = static_cast<int>(textLines.size());
@@ -1238,6 +1239,10 @@ namespace H3FontExtension
             const size_t stopCount = line.stops.size();
 
             const int lineY = iY + startY + rowIdx * fontHeight;
+
+            // 本行可见字符索引（与原始引擎 DrawStringExecute 的 colora 计数一致）
+            int charIdx = 0;
+
             while (p < end)
             {
                 // 检查当前位置是否有颜色变更
@@ -1254,8 +1259,11 @@ namespace H3FontExtension
                 {
                     H3Font_DrawChar<Is32>(pFont, pPcx, (wchar_t)code,
                         curX, lineY + shift, curColor);
+                    if (cursorPos == charIdx)
+                        H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, lineY + shift, defaultColor);
                     curX += extFont->GetCharWidth((wchar_t)code);
                     ++p;
+                    ++charIdx;
                 }
                 else
                 {
@@ -1265,19 +1273,29 @@ namespace H3FontExtension
                         const wchar_t wch = ExtFont::GbkToWchar(code, nextCode);
                         H3Font_DrawChar<Is32>(pFont, pPcx, wch,
                             curX, lineY + shift, curColor);
+                        if (cursorPos == charIdx)
+                            H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, lineY + shift, defaultColor);
                         curX += extFont->GetCharWidth(wch);
                         p += 2;
+                        ++charIdx;
                     }
                     else
                     {
                         // 无效双字节，当单字节处理
                         H3Font_DrawChar<Is32>(pFont, pPcx, (wchar_t)code,
                             curX, lineY + shift, curColor);
+                        if (cursorPos == charIdx)
+                            H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, lineY + shift, defaultColor);
                         curX += extFont->GetCharWidth((wchar_t)code);
                         ++p;
+                        ++charIdx;
                     }
                 }
             }
+
+            // 行尾光标（cursorPos 等于本行可见字符数）
+            if (cursorPos != -1 && cursorPos == charIdx)
+                H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, lineY + shift, curColor);
         }
     }
 
@@ -1299,20 +1317,41 @@ namespace H3FontExtension
      * @param iBoxHeight  文本框像素高度
      * @param uColorIdx   颜色索引（游戏调色板索引）
      * @param uAlignFlags 对齐标志（eTextAlignment 位掩码）
-     * @param iFontStyle  字体样式（未使用）
+     * @param iFontStyle  输入光标位置（可见字符索引，-1 = 无光标）
      */
     static void __stdcall H3Font_DrawText(HiHook* h, H3FontExt* pFont, char* szText, H3LoadedPcx16* pPcx,
         int iX, int iY, int iBoxWidth, int iBoxHeight,
         uint32_t uColorIdx, uint32_t uAlignFlags, int iFontStyle)
     {
-        if (!szText || !*szText || iBoxWidth == 0 || !pPcx || !pFont->ExtData)
+        if (!szText || iBoxWidth == 0 || !pPcx || !pFont->ExtData)
             return;
 
-        // ========== 阶段一：解析颜色 ==========
+        // ========== 阶段一：解析颜色与字体度量 ==========
         const uint32_t ci = (uColorIdx & 0x100) ? (uColorIdx & 0xFE) : (uColorIdx + 9);
         const DWORD defaultColor = GetColor(pFont->palette, ci);
         const DWORD highlightColor = GetColor(pFont->palette, ci + 1);
         const bool is32bit = Is32BitMode;
+
+        auto* extFont = pFont->ExtData;
+        const int fontHeight = pFont->height;
+        const int effHeight = extFont->EffectiveHeight(); // 含底部边距的有效字形高度
+
+        // 统一垂直偏移：在行高内居中有效字形区域
+        const int shift = (fontHeight - effHeight) / 2;
+
+        // ========== 空文本：原始引擎仍绘制输入光标（'_'） ==========
+        const int cursorPos = iFontStyle;
+        if (!*szText)
+        {
+            if (cursorPos != -1)
+            {
+                if (is32bit)
+                    H3Font_DrawChar<true>(pFont, pPcx, L'_', iX, iY + shift, defaultColor);
+                else
+                    H3Font_DrawChar<false>(pFont, pPcx, L'_', iX, iY + shift, defaultColor);
+            }
+            return;
+        }
 
         // ========== 阶段二：获取布局（缓存命中 → 跳过拆行与颜色解析）==========
         const std::vector<CleanLine>& textLines =
@@ -1322,15 +1361,7 @@ namespace H3FontExtension
 
         const int lineCount = static_cast<int>(textLines.size());
 
-        // ========== 阶段三：缓存字体度量 ==========
-        auto* extFont = pFont->ExtData;
-        const int fontHeight = pFont->height;
-        const int effHeight = extFont->EffectiveHeight(); // 含底部边距的有效字形高度
-
-        // 统一垂直偏移：在行高内居中有效字形区域
-        const int shift = (fontHeight - effHeight) / 2;
-
-        // ========== 阶段四：垂直对齐 ==========
+        // ========== 阶段三：垂直对齐 ==========
         int startY = 0;
 
         if (uAlignFlags & eTextAlignment::VCENTER)
@@ -1355,16 +1386,16 @@ namespace H3FontExtension
                 startY = iBoxHeight - totalH;
         }
 
-        // ========== 阶段五：逐行绘制（按色深一次性分派，内循环完全内联）==========
+        // ========== 阶段四：逐行绘制（按色深一次性分派，内循环完全内联）==========
         if (is32bit)
         {
             DrawLines<true>(pFont, pPcx, textLines, iX, iY, startY, iBoxWidth, iBoxHeight,
-                uAlignFlags, defaultColor, shift, fontHeight);
+                uAlignFlags, defaultColor, shift, fontHeight, cursorPos);
         }
         else
         {
             DrawLines<false>(pFont, pPcx, textLines, iX, iY, startY, iBoxWidth, iBoxHeight,
-                uAlignFlags, defaultColor, shift, fontHeight);
+                uAlignFlags, defaultColor, shift, fontHeight, cursorPos);
         }
     }
 
@@ -1506,6 +1537,30 @@ namespace H3FontExtension
             });
 
         return lineCount;
+    }
+
+    /**
+     * @brief Hook: 计算文本首行的像素宽度（遇换行符停止）
+     *
+     * 原始引擎实现按字节查 abc 表，对 GBK 双字节字符宽度计算错误。
+     * 该函数被消息框特殊文本宽度计算（DoNormalDialog）、文本输入框
+     * 裁剪/滚动偏移（textEntryWidget）等使用，替换后中文字符宽度准确。
+     */
+    static int __stdcall H3Font_LineWidth(HiHook* h, H3FontExt* pFont, char* szText)
+    {
+        if (!szText || !*szText || !pFont->ExtData)
+            return 0;
+
+        int lineWidth = 0;
+        ForEachVisibleChar(pFont, szText,
+            [&](TokenType type, int width, int /*bytes*/)
+            {
+                if (type == TokenType::Newline)
+                    return false;
+                lineWidth += width;
+                return true;
+            });
+        return lineWidth;
     }
 
     /**
@@ -1726,6 +1781,7 @@ namespace H3FontExtension
         // 文本渲染与布局 Hook
         _PI->WriteHiHook(0x4B51F0, SPLICE_, THISCALL_, H3Font_DrawText);           // 文本绘制
         _PI->WriteHiHook(0x4B5580, SPLICE_, THISCALL_, H3Font_GetLineCount);       // 计算文本行数
+        _PI->WriteHiHook(0x4B5680, SPLICE_, THISCALL_, H3Font_LineWidth);          // 首行文本像素宽度
         _PI->WriteHiHook(0x4B56F0, SPLICE_, THISCALL_, H3Font_GetLineWidth);       // 最长文本行宽度
         _PI->WriteHiHook(0x4B5770, SPLICE_, THISCALL_, H3Font_GetWordWidth);       // 最长单词宽度
         _PI->WriteHiHook(0x4B57E0, SPLICE_, THISCALL_, H3Font_GetLineWrapWidth);   // 最长换行后宽度
