@@ -1,8 +1,9 @@
 #pragma once
 
+#include <array>
+#include <memory>
 #include <string>
 #include <vector>
-#include <unordered_map>
 
 #define _H3API_PATCHER_X86_
 #include <H3API.hpp>
@@ -62,6 +63,14 @@ namespace H3FontExtension
     };
 
     /**
+     * @brief 已渲染字形的 alpha 掩膜数据
+     */
+    struct GlyphData
+    {
+        std::vector<uint8_t> alpha;  ///< 覆盖度掩膜（GlyphWidth × EffectiveHeight 字节）
+    };
+
+    /**
      * @brief 扩展字库（统一使用 GDI/ClearType 实时渲染）
      *
      * 所有字符（ASCII 和 GBK 汉字）均通过系统 GDI 运行时渲染字形，
@@ -97,10 +106,10 @@ namespace H3FontExtension
         HGDIOBJ hOldFont     = nullptr;  ///< 字体选入 DC 前的原字体（释放时恢复）
 
         // ---- 字形缓存 ----
-        /// 字形 alpha 缓存：wchar_t → alpha 掩膜（GlyphWidth × EffectiveHeight 字节）
-        mutable std::unordered_map<wchar_t, std::vector<uint8_t>> glyphCache;
-        /// 字符宽度缓存：wchar_t → GDI 测量的像素宽度（advance width，含左右边距）
-        mutable std::unordered_map<wchar_t, int> widthCache;
+        /// 字形 alpha 缓存：64K 扁平指针表（wchar_t 为 16 位，O(1) 无哈希）
+        mutable std::unique_ptr<std::unique_ptr<GlyphData>[]> glyphCache;
+        /// 字符宽度缓存：64K 扁平表（advance width，含左右边距），0 = 尚未测量
+        mutable std::array<int16_t, 0x10000> widthCache{};
 
         ExtFont() = default;
 
@@ -141,6 +150,7 @@ namespace H3FontExtension
          * @param iMarginBottom 底部边距
          * @param iLineSpacing 行间距
          * @param bDrawShadow  是否绘制阴影
+         * @return 加载成功返回 true，任一 GDI 资源创建失败返回 false
          */
         bool __fastcall LoadGdiFont(const char* fontName, int iHeight, int iWidth, bool bBold, bool bAntiAlias,
             int iMarginLeft, int iMarginRight, int iMarginBottom, int iLineSpacing, bool bDrawShadow);
@@ -217,7 +227,8 @@ namespace H3FontExtension
      */
     inline static bool IsDBCSLeadByte(uint8_t code, uint8_t nextCode)
     {
-        return code >= DBCS_SECTION && nextCode && nextCode != 0xFF && nextCode >= DBCS_POSITION;
+        // GBK 位码有效范围 0x40..0xFE，其中 0x7F 为非法码位
+        return code >= DBCS_SECTION && nextCode >= DBCS_POSITION && nextCode <= 0xFE && nextCode != 0x7F;
     }
 
     /**

@@ -3,6 +3,11 @@
 static HINSTANCE hOriginalBinkW32 = NULL;
 static FARPROC hFuncEntry[72] = { 0 };
 
+// 注意：下方每个 stub 中的 `jmp hFuncEntry[i * 4]` 是正确的写法——
+// MSVC 内联汇编把 `hFuncEntry[n]` 的 n 当作字节偏移（不按元素类型缩放），
+// i * 4 字节偏移恰好等于 FARPROC 数组的第 i 项。
+// 请勿改成 hFuncEntry[i]，那会错误地跳到第 i/4 项。
+
 static void LoadBinkw32FuncEntry()
 {
 	hOriginalBinkW32 = LoadLibrary(L"binkw32_o.dll");

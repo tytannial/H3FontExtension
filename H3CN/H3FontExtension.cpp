@@ -6,6 +6,7 @@
 #include <cctype>
 #include <charconv>
 #include <cstring>
+#include <unordered_map>
 
 using namespace h3;
 using namespace std;
@@ -30,7 +31,7 @@ namespace H3FontExtension
         WORD  rgb565; ///< 16 位色深格式
     };
 
-    /** @brief 命名颜色映射表（从配置文件加载） */
+    /** @brief 命名颜色映射表（从配置文件加载；仅在布局缓存未命中的拆行/预处理阶段查询） */
     static std::unordered_map<std::string, NamedColor> TextColorMap;
 
     /** @brief 文本框最小宽度限制 */
@@ -53,8 +54,40 @@ namespace H3FontExtension
      */
     static wchar_t g_GbkWideTable[0x10000];
 
-    /** @brief 拆行复用缓冲（游戏渲染线程单线程，跨调用保留容量以避免每帧堆分配） */
-    static std::vector<TextLineStruct> g_SplitScratch;
+    /**
+     * @brief wchar_t → 是否 GBK 可表示 全局查表（0 = 不可表示）
+     *
+     * 初始化时对 GBK 全码位（0x8140-0xFEFE，约 2.4 万）做一次
+     * MultiByteToWideChar 扫描，得到精确的 GBK 可表示字符集。
+     * 绘制阶段 O(1) 查表替代原来 15 连比较的区间判断。
+     */
+    static uint8_t g_IsGbkCharTable[0x10000];
+
+    /** @brief 初始化 GBK 字符集查表（Init 时调用一次） */
+    static void InitGbkTables()
+    {
+        memset(g_IsGbkCharTable, 0, sizeof(g_IsGbkCharTable));
+
+        // GBK 单字节区：ASCII 可打印字符
+        for (int c = 0x20; c <= 0x7E; ++c)
+            g_IsGbkCharTable[c] = 1;
+
+        // GBK 双字节区全扫描
+        char gbk[2];
+        for (int section = DBCS_SECTION; section <= 0xFE; ++section)
+        {
+            for (int position = DBCS_POSITION; position <= 0xFE; ++position)
+            {
+                if (position == 0x7F)
+                    continue;
+                gbk[0] = static_cast<char>(section);
+                gbk[1] = static_cast<char>(position);
+                wchar_t wch = 0;
+                if (MultiByteToWideChar(936, 0, gbk, 2, &wch, 1) == 1)
+                    g_IsGbkCharTable[wch] = 1;
+            }
+        }
+    }
 
     // ============================================================
     // Section 1: ExtFont 实现
@@ -254,16 +287,17 @@ namespace H3FontExtension
 
         hOldFont = SelectObject(hdcGlyph, hGlyphFont);
 
+        // 分配 64K 扁平字形缓存表（未命中槽位为 nullptr，首次使用时按需渲染）
+        glyphCache = std::make_unique<std::unique_ptr<GlyphData>[]>(0x10000);
+
         // 预缓存常用 ASCII 字形及宽度
-        glyphCache.reserve(256);
-        widthCache.reserve(256);
         for (wchar_t c = L' '; c <= L'~'; ++c)
         {
             GetGlyphAlpha(c);
             GetCharWidth(c);
         }
 
-        return false; // 游戏引擎约定
+        return true;
     }
 
     /**
@@ -286,34 +320,12 @@ namespace H3FontExtension
     /**
      * @brief 判断 wchar_t 是否在 GBK 可表示范围内
      *
-     * 直接通过 Unicode 区间判断，无需 API 调用。
+     * 通过初始化时构建的精确查表判断，O(1) 无 API 调用。
      * 非 GBK 字符由 GDI 绘制为方块（tofu），提前过滤可避免渲染开销。
      */
     bool ExtFont::IsGbkChar(wchar_t wch)
     {
-        // ASCII 可打印 (U+0020..U+007E)
-        if (wch >= 0x20 && wch <= 0x7E)
-            return true;
-        // CJK 核心汉字 (U+4E00..U+9FFF) —— 覆盖 99% 常用中文
-        if (wch >= 0x4E00 && wch <= 0x9FFF)
-            return true;
-
-        return (wch >= 0x3000 && wch <= 0x303F)  // CJK 标点符号
-            || (wch >= 0x3400 && wch <= 0x4DBF)  // CJK 扩展 A
-            || (wch >= 0xF900 && wch <= 0xFAFF)  // CJK 兼容汉字
-            || (wch >= 0xFF00 && wch <= 0xFFEF)  // 全角/半角形式（含全角字母数字）
-            || (wch >= 0xFE30 && wch <= 0xFE4F)  // CJK 兼容形式
-            || (wch >= 0x3040 && wch <= 0x30FF)  // 日文假名（GBK 包含）
-            || (wch >= 0x2010 && wch <= 0x2040)  // 通用标点（破折号等）
-            || (wch >= 0x3105 && wch <= 0x3129)  // 注音符号
-            || (wch >= 0x2160 && wch <= 0x24FF)  // 罗马数字 / 带圈字母数字
-            || (wch >= 0x2500 && wch <= 0x25FF)  // 表格线 / 方块元素
-            || (wch >= 0x2600 && wch <= 0x26FF)  // 杂项符号
-            || (wch >= 0x2190 && wch <= 0x22FF)  // 箭头 / 数学符号
-            || (wch >= 0x31C0 && wch <= 0x31EF)  // CJK 笔画
-            || (wch >= 0x3220 && wch <= 0x32B0)  // 带圈汉字
-            || (wch >= 0xE000 && wch <= 0xF8FF)  // 私有使用区
-            ;
+        return g_IsGbkCharTable[wch] != 0;
     }
 
     /**
@@ -332,13 +344,13 @@ namespace H3FontExtension
      */
     const uint8_t* ExtFont::GetGlyphAlpha(wchar_t ch) const
     {
-        if (!hdcGlyph || !pGlyphBits)
+        if (!hdcGlyph || !pGlyphBits || !glyphCache)
             return nullptr;
 
-        // 检查缓存
-        auto it = glyphCache.find(ch);
-        if (it != glyphCache.end())
-            return it->second.data();
+        // 扁平表直接命中
+        auto& slot = glyphCache[static_cast<uint16_t>(ch)];
+        if (slot)
+            return slot->alpha.data();
 
         // 按需渲染
         const int bufW = GlyphWidth;
@@ -354,18 +366,20 @@ namespace H3FontExtension
         GdiFlush();
 
         // 提取 alpha 掩膜：max(R,G,B) 作为覆盖度
-        std::vector<uint8_t> alpha(static_cast<size_t>(bufW) * bufH);
+        auto glyph = std::make_unique<GlyphData>();
+        glyph->alpha.resize(static_cast<size_t>(bufW) * bufH);
+
         const uint8_t* src = static_cast<const uint8_t*>(pGlyphBits);
-        for (size_t i = 0; i < alpha.size(); ++i)
+        for (size_t i = 0; i < glyph->alpha.size(); ++i)
         {
             const uint8_t b = src[i * 4];
             const uint8_t g = src[i * 4 + 1];
             const uint8_t r = src[i * 4 + 2];
-            alpha[i] = (r > g) ? ((r > b) ? r : b) : ((g > b) ? g : b);
+            glyph->alpha[i] = (r > g) ? ((r > b) ? r : b) : ((g > b) ? g : b);
         }
 
-        const auto inserted = glyphCache.emplace(ch, std::move(alpha));
-        return inserted.first->second.data();
+        slot = std::move(glyph);
+        return slot->alpha.data();
     }
 
     /**
@@ -379,14 +393,14 @@ namespace H3FontExtension
         if (!hdcGlyph)
             return GlyphWidth; // 回退
 
-        auto it = widthCache.find(ch);
-        if (it != widthCache.end())
-            return it->second;
+        const int16_t cached = widthCache[static_cast<uint16_t>(ch)];
+        if (cached != 0)
+            return cached;
 
         SIZE sz = { 0, 0 };
         GetTextExtentPoint32W(hdcGlyph, &ch, 1, &sz);
         const int w = sz.cx + MarginLeft + MarginRight;
-        widthCache.emplace(ch, w);
+        widthCache[static_cast<uint16_t>(ch)] = static_cast<int16_t>(w);
         return w;
     }
 
@@ -1005,7 +1019,7 @@ namespace H3FontExtension
         std::vector<CleanLine> lines;  ///< 预处理结果
     };
 
-    static constexpr size_t LayoutCacheSize = 64;
+    static constexpr size_t LayoutCacheSize = 128;
     static LayoutEntry g_LayoutCache[LayoutCacheSize];
 
     /** @brief FNV-1a 64 位字符串哈希 */
@@ -1062,12 +1076,14 @@ namespace H3FontExtension
         slot.highlightColor = highlightColor;
         slot.is32bit = is32bit;
 
-        g_SplitScratch.clear();
-        SplitTextIntoLines(pFont, szText, iBoxWidth, g_SplitScratch);
+        // 函数级复用缓冲（跨调用保留容量，避免每帧堆分配；不与其他入口共享）
+        static std::vector<TextLineStruct> scratch;
+        scratch.clear();
+        SplitTextIntoLines(pFont, szText, iBoxWidth, scratch);
 
         slot.lines.clear();
-        slot.lines.reserve(g_SplitScratch.size());
-        for (const auto& rawLine : g_SplitScratch)
+        slot.lines.reserve(scratch.size());
+        for (const auto& rawLine : scratch)
         {
             slot.lines.emplace_back();
             PreprocessLine(rawLine, defaultColor, highlightColor, is32bit, slot.lines.back());
@@ -1373,9 +1389,11 @@ namespace H3FontExtension
         if (!szText || !*szText || !pFont->ExtData)
             return;
 
-        g_SplitScratch.clear();
-        SplitTextIntoLines(pFont, szText, iBoxWidth, g_SplitScratch);
-        for (const auto& line : g_SplitScratch)
+        // 独立复用缓冲（不与布局缓存的拆行缓冲共享，避免潜在重入相互踩踏）
+        static std::vector<TextLineStruct> scratch;
+        scratch.clear();
+        SplitTextIntoLines(pFont, szText, iBoxWidth, scratch);
+        for (const auto& line : scratch)
         {
             lines.Add(H3String(line.Text.c_str()));
         }
@@ -1536,7 +1554,12 @@ namespace H3FontExtension
      */
     static H3Font* __stdcall H3Font_Load_Hook(HiHook* h, char* name)
     {
-        auto fntName = _strlwr(name);
+        // 复制到局部缓冲区再小写化，避免原地修改游戏内存中的字体名
+        // （若指针指向只读内存将导致访问违例）
+        char fntName[64];
+        strncpy_s(fntName, name, sizeof(fntName) - 1);
+        _strlwr(fntName);
+
         auto font = FASTCALL_1(H3FontExt*, h->GetDefaultFunc(), fntName);
         if (!font)
             return font;
@@ -1601,6 +1624,9 @@ namespace H3FontExtension
 #ifndef NDEBUG
         MessageBoxW(H3Hwnd::Get(), L"注入成功", L"调试中", 0);
 #endif
+
+        // ---------- 初始化 GBK 查表 ----------
+        InitGbkTables();
 
         // ---------- 获取 Patcher 实例 ----------
         _P = GetPatcher();
