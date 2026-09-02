@@ -41,7 +41,7 @@ MarginRight = 0
 MarginBottom = 0
 LineSpacing = 0
 DrawShadow = false
-OriginalAscii = true
+OriginalAscii = false
 
 [[Fonts]]
 Name = "smalfont.fnt"
