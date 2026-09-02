@@ -24,6 +24,10 @@ BoxWidthMax    = -1     # 用于限制最大弹出提示框宽度(大于256生�
 # MarginBottom: 底部扩展（像素），扩大学形缓冲区以容纳字体下降部分（如微软雅黑需要适当增大）
 # LineSpacing: 行间距（像素），增加行与行之间的额外空白
 # DrawShadow: 是否绘制阴影
+# OriginalAscii: 是否使用原版 ASCII 位图字体
+#   true  = ASCII 字符（0x20-0x7E，含空格/英文/数字/标点）沿用游戏 .fnt 自带的
+#           位图字形与间距，仅 GBK 汉字使用系统字体渲染
+#   false = 全部字符（包括 ASCII）都用 ExtFont 指定的系统字体渲染
 
 [[Fonts]]
 Name = "tiny.fnt"
@@ -37,6 +41,7 @@ MarginRight = 0
 MarginBottom = 0
 LineSpacing = 0
 DrawShadow = false
+OriginalAscii = true
 
 [[Fonts]]
 Name = "smalfont.fnt"
@@ -50,6 +55,7 @@ MarginRight = 0
 MarginBottom = 0
 LineSpacing = 0
 DrawShadow = true
+OriginalAscii = true
 
 [[Fonts]]
 Name = "medfont.fnt"
@@ -63,6 +69,7 @@ MarginRight = 0
 MarginBottom = 0
 LineSpacing = 0
 DrawShadow = true
+OriginalAscii = true
 
 [[Fonts]]
 Name = "bigfont.fnt"
@@ -76,6 +83,7 @@ MarginRight = 0
 MarginBottom = 0
 LineSpacing = 0
 DrawShadow = true
+OriginalAscii = true
 
 [[Fonts]]
 Name = "calli10r.fnt"
@@ -89,6 +97,7 @@ MarginRight = 0
 MarginBottom = 0
 LineSpacing = 0
 DrawShadow = true
+OriginalAscii = true
 
 [[Fonts]]
 Name = "credits.fnt"
@@ -102,6 +111,7 @@ MarginRight = 0
 MarginBottom = 0
 LineSpacing = 0
 DrawShadow = true
+OriginalAscii = true
 
 [[Fonts]]
 Name = "hiscore.fnt"
@@ -115,6 +125,7 @@ MarginRight = 0
 MarginBottom = 0
 LineSpacing = 0
 DrawShadow = true
+OriginalAscii = true
 
 [[Fonts]]
 Name = "times08r.fnt"
@@ -128,6 +139,7 @@ MarginRight = 0
 MarginBottom = 0
 LineSpacing = 0
 DrawShadow = true
+OriginalAscii = true
 
 [[Fonts]]
 Name = "verd10b.fnt"
@@ -141,6 +153,7 @@ MarginRight = 0
 MarginBottom = 0
 LineSpacing = 0
 DrawShadow = true
+OriginalAscii = true
 
 
 # 彩色文字定义

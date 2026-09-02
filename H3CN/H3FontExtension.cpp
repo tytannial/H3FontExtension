@@ -95,10 +95,11 @@ namespace H3FontExtension
 
     /** @brief 构造函数：统一加载 GDI 系统字体 */
     ExtFont::ExtFont(LPCSTR lpFileName, int iHeight, int iWidth, bool bBold, bool bAntiAlias,
-        int iMarginLeft, int iMarginRight, int iMarginBottom, int iLineSpacing, bool bDrawShadow)
+        int iMarginLeft, int iMarginRight, int iMarginBottom, int iLineSpacing, bool bDrawShadow,
+        bool bOriginalAscii)
     {
         LoadGdiFont(lpFileName, iHeight, iWidth, bBold, bAntiAlias,
-            iMarginLeft, iMarginRight, iMarginBottom, iLineSpacing, bDrawShadow);
+            iMarginLeft, iMarginRight, iMarginBottom, iLineSpacing, bDrawShadow, bOriginalAscii);
     }
 
     /** @brief 释放 GDI 资源（先恢复原对象再删除，避免句柄泄漏） */
@@ -158,6 +159,7 @@ namespace H3FontExtension
         , MarginBottom(other.MarginBottom), LineSpacing(other.LineSpacing)
         , GlyphWidth(other.GlyphWidth)
         , DrawShadow(other.DrawShadow)
+        , OriginalAscii(other.OriginalAscii)
         , hdcGlyph(other.hdcGlyph), hbmGlyph(other.hbmGlyph)
         , pGlyphBits(other.pGlyphBits), hGlyphFont(other.hGlyphFont)
         , hOldBitmap(other.hOldBitmap), hOldFont(other.hOldFont)
@@ -185,6 +187,7 @@ namespace H3FontExtension
             MarginBottom = other.MarginBottom; LineSpacing = other.LineSpacing;
             GlyphWidth = other.GlyphWidth;
             DrawShadow = other.DrawShadow;
+            OriginalAscii = other.OriginalAscii;
             hdcGlyph = other.hdcGlyph; other.hdcGlyph = nullptr;
             hbmGlyph = other.hbmGlyph; other.hbmGlyph = nullptr;
             pGlyphBits = other.pGlyphBits; other.pGlyphBits = nullptr;
@@ -204,7 +207,8 @@ namespace H3FontExtension
      * 字形和单个字符宽度在首次使用时按需渲染/测量并缓存。
      */
     bool __fastcall ExtFont::LoadGdiFont(const char* fontName, int iHeight, int iWidth, bool bBold, bool bAntiAlias,
-        int iMarginLeft, int iMarginRight, int iMarginBottom, int iLineSpacing, bool bDrawShadow)
+        int iMarginLeft, int iMarginRight, int iMarginBottom, int iLineSpacing, bool bDrawShadow,
+        bool bOriginalAscii)
     {
         this->Height = iHeight;              // 核心字形高度（不含底部边距）
         this->Width = iWidth;
@@ -215,6 +219,7 @@ namespace H3FontExtension
         this->MarginBottom = iMarginBottom;  // 额外底部空间（用于容纳字体下降部分）
         this->LineSpacing = iLineSpacing;    // 额外行间距
         this->DrawShadow = bDrawShadow;
+        this->OriginalAscii = bOriginalAscii; // ASCII 走原版 .fnt 位图
         this->GlyphWidth = iMarginLeft + iWidth + iMarginRight;
 
         // 创建 32-bit DIB section 作为字形渲染目标
@@ -290,11 +295,14 @@ namespace H3FontExtension
         // 分配 64K 扁平字形缓存表（未命中槽位为 nullptr，首次使用时按需渲染）
         glyphCache = std::make_unique<std::unique_ptr<GlyphData>[]>(0x10000);
 
-        // 预缓存常用 ASCII 字形及宽度
-        for (wchar_t c = L' '; c <= L'~'; ++c)
+        // 预缓存常用 ASCII 字形及宽度（原版位图模式下 ASCII 不经 GDI，无需预热）
+        if (!OriginalAscii)
         {
-            GetGlyphAlpha(c);
-            GetCharWidth(c);
+            for (wchar_t c = L' '; c <= L'~'; ++c)
+            {
+                GetGlyphAlpha(c);
+                GetCharWidth(c);
+            }
         }
 
         return true;
@@ -492,9 +500,36 @@ namespace H3FontExtension
         }
     }
 
+    /** @brief 直接写入像素（无混合，用于原版位图字体的硬边缘像素） */
+    template<bool Is32>
+    static inline void WritePixel(PUINT8 rowBuf, int col, DWORD color)
+    {
+        if constexpr (Is32)
+            *(reinterpret_cast<DWORD*>(rowBuf) + col) = color;
+        else
+            *(reinterpret_cast<WORD*>(rowBuf) + col) = static_cast<WORD>(color);
+    }
+
     // ============================================================
     // Section 3: 文本扫描与处理
     // ============================================================
+
+    /**
+     * @brief 统一字符测宽入口（按字体配置分派原版位图 / GDI 两条路径）
+     *
+     * 原版 ASCII 模式下可打印 ASCII（0x20-0x7E）的宽度取自游戏字体的
+     * 间距表（leftMargin + span + rightMargin），与原版位图绘制一致；
+     * 其余字符（GBK 汉字或全 GDI 模式的 ASCII）走 ExtFont 的 GDI 测量缓存。
+     */
+    static inline int CharWidthPx(const H3FontExt* pFont, wchar_t ch)
+    {
+        if (pFont->ExtData->UsesOriginalAscii(ch))
+        {
+            const auto& spacing = pFont->width[ch];
+            return spacing.leftMargin + spacing.span + spacing.rightMargin;
+        }
+        return pFont->ExtData->GetCharWidth(ch);
+    }
 
     /**
      * @brief 遍历文本中所有"可见 token"，自动跳过颜色码 {~RRGGBB} / { } / }
@@ -514,8 +549,6 @@ namespace H3FontExtension
     template<typename Func>
     static const char* ForEachVisibleChar(H3FontExt* pFont, LPCSTR szText, Func&& fn)
     {
-        auto* extFont = pFont->ExtData;
-
         while (*szText)
         {
             uint8_t code = static_cast<uint8_t>(*szText);
@@ -548,7 +581,7 @@ namespace H3FontExtension
             // -------- 空格 --------
             if (code == ' ')
             {
-                const int spaceW = extFont->GetCharWidth(L' ');
+                const int spaceW = CharWidthPx(pFont, L' ');
                 if (!fn(TokenType::Space, spaceW, 1))
                     return szText;
                 ++szText;
@@ -559,7 +592,7 @@ namespace H3FontExtension
             if (IsSingleByte(code))
             {
                 const wchar_t wch = (wchar_t)code;
-                const int charW = extFont->GetCharWidth(wch);
+                const int charW = CharWidthPx(pFont, wch);
                 if (!fn(TokenType::SingleByte, charW, 1))
                     return szText;
                 ++szText;
@@ -571,7 +604,7 @@ namespace H3FontExtension
             if (IsDBCSLeadByte(code, nc))
             {
                 const wchar_t wch = ExtFont::GbkToWchar(code, nc);
-                const int charW = extFont->GetCharWidth(wch);
+                const int charW = CharWidthPx(pFont, wch);
                 if (!fn(TokenType::DoubleByte, charW, 2))
                     return szText;
                 szText += 2;
@@ -818,8 +851,7 @@ namespace H3FontExtension
             return;
 
         // 缓存常用参数
-        auto* extFont = pFont->ExtData;
-        const int spaceWidth = extFont->GetCharWidth(L' ');
+        const int spaceWidth = CharWidthPx(pFont, L' ');
 
         std::string lineBuf;
         int lineWidth = 0;
@@ -945,12 +977,12 @@ namespace H3FontExtension
                             continue;
                         }
 
-                        // ---- 可见字符：统一通过 GDI 获取宽度 ----
+                        // ---- 可见字符：统一通过测宽入口获取宽度 ----
                         int charW = 0;
                         int charBytes = 0;
                         if (IsSingleByte(code))
                         {
-                            charW = extFont->GetCharWidth((wchar_t)code);
+                            charW = CharWidthPx(pFont, (wchar_t)code);
                             charBytes = 1;
                         }
                         else
@@ -958,7 +990,7 @@ namespace H3FontExtension
                             const uint8_t nextCode = (p + 1 < realEnd) ? static_cast<uint8_t>(*(p + 1)) : 0;
                             if (IsDBCSLeadByte(code, nextCode))
                             {
-                                charW = extFont->GetCharWidth(ExtFont::GbkToWchar(code, nextCode));
+                                charW = CharWidthPx(pFont, ExtFont::GbkToWchar(code, nextCode));
                                 charBytes = 2;
                             }
                             else
@@ -1096,10 +1128,81 @@ namespace H3FontExtension
     // ============================================================
 
     /**
-     * @brief 绘制单个字符到 PCX 缓冲区（统一 GDI 渲染）
+     * @brief 使用游戏原版 .fnt 位图绘制单个 ASCII 字符
      *
-     * 所有字符（ASCII 和 GBK 汉字）均通过 GDI 实时渲染 + alpha 混合，
-     * 并按目标 PCX 边界裁剪，杜绝越界写入。
+     * 逐像素读取字形数据：0 = 透明跳过，255 = 前景色，其余 = 阴影色
+     * （原版字体的阴影/描边信息直接烘焙在位图中），硬边直写不做混合。
+     * 按目标 PCX 边界裁剪，杜绝越界写入。
+     *
+     * @tparam Is32      是否 32 位色深
+     * @param pFont      字体指针
+     * @param pOutputPcx 目标 PCX 图像缓冲区
+     * @param ch         待绘制字符（0x20-0x7E）
+     * @param iX         绘制起点 X 坐标（字身左边缘，不含左边距）
+     * @param iY         绘制起点 Y 坐标（字形顶部）
+     * @param uFontColor 前景色（已转换为当前色深格式）
+     * @return 是否实际绘制了像素
+     */
+    template<bool Is32>
+    static bool H3Font_DrawCharBitmap(H3FontExt* pFont, H3LoadedPcx16* pOutputPcx, wchar_t ch,
+        int iX, int iY, DWORD uFontColor)
+    {
+        const auto& spacing = pFont->width[ch];
+        const int span = spacing.span;
+        const int rows = pFont->oriHeight;
+        const int startX = iX + spacing.leftMargin;
+        if (span <= 0 || rows <= 0)
+            return false;
+
+        const PUINT8 fontBuf = pFont->GetChar(static_cast<UINT32>(ch));
+        if (!fontBuf)
+            return false;
+
+        const int pcxW = pOutputPcx->width;
+        const int pcxH = pOutputPcx->height;
+
+        int colStart = 0, colEnd = span;
+        if (startX < 0)
+            colStart = -startX;
+        if (startX + colEnd > pcxW)
+            colEnd = pcxW - startX;
+        if (colStart >= colEnd)
+            return false;
+
+        int rowStart = 0, rowEnd = rows;
+        if (iY < 0)
+            rowStart = -iY;
+        if (iY + rowEnd > pcxH)
+            rowEnd = pcxH - iY;
+        if (rowStart >= rowEnd)
+            return false;
+
+        for (int rowIdx = rowStart; rowIdx < rowEnd; ++rowIdx)
+        {
+            PUINT8 rowBuf = pOutputPcx->GetRow(iY + rowIdx);
+            const uint8_t* srcRow = fontBuf + static_cast<size_t>(rowIdx) * span;
+
+            for (int colIdx = colStart; colIdx < colEnd; ++colIdx)
+            {
+                const uint8_t pixel = srcRow[colIdx];
+                if (!pixel)
+                    continue;
+
+                // 255 为正常前景，其余非零值为原版位图自带的阴影/过渡色
+                const DWORD color = (pixel == 0xFF) ? uFontColor : ShadowColor;
+                WritePixel<Is32>(rowBuf, startX + colIdx, color);
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @brief 绘制单个字符到 PCX 缓冲区（GDI 渲染 / 原版 ASCII 位图双路径）
+     *
+     * GBK 汉字一律通过 GDI 实时渲染 + alpha 混合；ASCII 字符按字体的
+     * OriginalAscii 开关决定：开启时走原版 .fnt 位图，关闭时同样走 GDI。
+     * 两条路径均按目标 PCX 边界裁剪，杜绝越界写入。
      *
      * @tparam Is32      是否 32 位色深
      * @param pFont      字体指针
@@ -1115,6 +1218,10 @@ namespace H3FontExtension
         int iX, int iY, DWORD uFontColor)
     {
         auto cFont = pFont->ExtData;
+
+        // 原版 ASCII 位图路径（字体缓冲区缺失时回退 GDI）
+        if (cFont->UsesOriginalAscii(wch) && pFont->bitmapBuffer)
+            return H3Font_DrawCharBitmap<Is32>(pFont, pOutputPcx, wch, iX, iY, uFontColor);
 
         // 非 GBK 字符 → 跳过（避免 GDI 渲染为方块）
         if (!ExtFont::IsGbkChar(wch))
@@ -1209,6 +1316,7 @@ namespace H3FontExtension
         auto* extFont = pFont->ExtData;
         const int lineCount = static_cast<int>(textLines.size());
         const int bottomBound = iY + iBoxHeight;
+        const int asciiShift = (fontHeight - pFont->oriHeight) / 2; // 原版位图 ASCII 垂直偏移
 
         for (int rowIdx = 0; rowIdx < lineCount; ++rowIdx)
         {
@@ -1240,6 +1348,12 @@ namespace H3FontExtension
 
             const int lineY = iY + startY + rowIdx * fontHeight;
 
+            // 原版位图 ASCII 以原始字高在行高内居中，与 GDI 字形的偏移不同
+            auto glyphY = [&](wchar_t wch)
+            {
+                return lineY + (extFont->UsesOriginalAscii(wch) ? asciiShift : shift);
+            };
+
             // 本行可见字符索引（与原始引擎 DrawStringExecute 的 colora 计数一致）
             int charIdx = 0;
 
@@ -1258,10 +1372,10 @@ namespace H3FontExtension
                 if (IsSingleByte(code))
                 {
                     H3Font_DrawChar<Is32>(pFont, pPcx, (wchar_t)code,
-                        curX, lineY + shift, curColor);
+                        curX, glyphY((wchar_t)code), curColor);
                     if (cursorPos == charIdx)
-                        H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, lineY + shift, defaultColor);
-                    curX += extFont->GetCharWidth((wchar_t)code);
+                        H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, glyphY(L'_'), defaultColor);
+                    curX += CharWidthPx(pFont, (wchar_t)code);
                     ++p;
                     ++charIdx;
                 }
@@ -1272,10 +1386,10 @@ namespace H3FontExtension
                     {
                         const wchar_t wch = ExtFont::GbkToWchar(code, nextCode);
                         H3Font_DrawChar<Is32>(pFont, pPcx, wch,
-                            curX, lineY + shift, curColor);
+                            curX, glyphY(wch), curColor);
                         if (cursorPos == charIdx)
-                            H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, lineY + shift, defaultColor);
-                        curX += extFont->GetCharWidth(wch);
+                            H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, glyphY(L'_'), defaultColor);
+                        curX += CharWidthPx(pFont, wch);
                         p += 2;
                         ++charIdx;
                     }
@@ -1283,10 +1397,10 @@ namespace H3FontExtension
                     {
                         // 无效双字节，当单字节处理
                         H3Font_DrawChar<Is32>(pFont, pPcx, (wchar_t)code,
-                            curX, lineY + shift, curColor);
+                            curX, glyphY((wchar_t)code), curColor);
                         if (cursorPos == charIdx)
-                            H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, lineY + shift, defaultColor);
-                        curX += extFont->GetCharWidth((wchar_t)code);
+                            H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, glyphY(L'_'), defaultColor);
+                        curX += CharWidthPx(pFont, (wchar_t)code);
                         ++p;
                         ++charIdx;
                     }
@@ -1295,7 +1409,7 @@ namespace H3FontExtension
 
             // 行尾光标（cursorPos 等于本行可见字符数）
             if (cursorPos != -1 && cursorPos == charIdx)
-                H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, lineY + shift, curColor);
+                H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, glyphY(L'_'), curColor);
         }
     }
 
@@ -1345,10 +1459,14 @@ namespace H3FontExtension
         {
             if (cursorPos != -1)
             {
+                // 光标为 ASCII，原版位图模式下按原始字高居中
+                const int cursorY = iY + (extFont->UsesOriginalAscii(L'_')
+                    ? (fontHeight - pFont->oriHeight) / 2 : shift);
+
                 if (is32bit)
-                    H3Font_DrawChar<true>(pFont, pPcx, L'_', iX, iY + shift, defaultColor);
+                    H3Font_DrawChar<true>(pFont, pPcx, L'_', iX, cursorY, defaultColor);
                 else
-                    H3Font_DrawChar<false>(pFont, pPcx, L'_', iX, iY + shift, defaultColor);
+                    H3Font_DrawChar<false>(pFont, pPcx, L'_', iX, cursorY, defaultColor);
             }
             return;
         }
@@ -1730,9 +1848,10 @@ namespace H3FontExtension
                             , (*fontCfg)["MarginLeft"].value_or(1)
                             , (*fontCfg)["MarginRight"].value_or(0)
                             , (*fontCfg)["MarginBottom"].value_or(0)
-                            , (*fontCfg)["LineSpacing"].value_or(0)
-                            , (*fontCfg)["DrawShadow"].value_or(true)
-                        ));
+                             , (*fontCfg)["LineSpacing"].value_or(0)
+                             , (*fontCfg)["DrawShadow"].value_or(true)
+                             , (*fontCfg)["OriginalAscii"].value_or(true)
+                         ));
                 }
             }
 

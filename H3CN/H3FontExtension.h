@@ -71,10 +71,12 @@ namespace H3FontExtension
     };
 
     /**
-     * @brief 扩展字库（统一使用 GDI/ClearType 实时渲染）
+     * @brief 扩展字库（GDI/ClearType 实时渲染，ASCII 可选原版位图）
      *
-     * 所有字符（ASCII 和 GBK 汉字）均通过系统 GDI 运行时渲染字形，
-     * 缓存抗锯齿 alpha 数据和单个字符的像素宽度。
+     * GBK 汉字通过系统 GDI 运行时渲染字形，缓存抗锯齿 alpha 数据和单个
+     * 字符的像素宽度。ASCII 字符的渲染方式由 OriginalAscii 开关决定：
+     * 开启时使用游戏原版 .fnt 位图（绘制与测宽均走原引擎数据），
+     * 关闭时同样走 GDI 实时渲染。
      *
      * 字形缓存仅保存 alpha 通道（1 字节/像素）：绘制时前景色来自
      * 调色板，字形自身的 RGB 不参与混合，只用作透明度掩膜。
@@ -93,9 +95,13 @@ namespace H3FontExtension
         int    LineSpacing     = 0;      ///< 行间距（像素），增加行与行之间的额外空白
         int    GlyphWidth      = 0;      ///< DIB 缓冲区宽度 = MarginLeft + Width + MarginRight
         bool   DrawShadow      = true;   ///< 是否绘制阴影
+        bool   OriginalAscii   = true;   ///< ASCII 字符（0x20-0x7E）是否使用原版 .fnt 位图字体
 
         /** @brief 返回有效字形高度（含底部边距） */
         int EffectiveHeight() const { return Height + MarginBottom; }
+
+        /** @brief 该字符是否走原版 ASCII 位图路径（开关开启且为可打印 ASCII） */
+        bool UsesOriginalAscii(wchar_t ch) const { return OriginalAscii && ch >= 0x20 && ch <= 0x7E; }
 
         // ---- GDI 渲染资源 ----
         HDC     hdcGlyph     = nullptr;  ///< 字形渲染内存 DC
@@ -125,9 +131,11 @@ namespace H3FontExtension
          * @param iMarginBottom 底部边距（扩大学形缓冲区，用于容纳字体下降部分）
          * @param iLineSpacing  行间距（增加行与行之间的额外空白）
          * @param bDrawShadow   是否绘制阴影
+         * @param bOriginalAscii ASCII 字符是否使用原版 .fnt 位图字体
          */
         ExtFont(LPCSTR lpFileName, int iHeight, int iWidth, bool bBold, bool bAntiAlias,
-            int iMarginLeft, int iMarginRight, int iMarginBottom, int iLineSpacing, bool bDrawShadow);
+            int iMarginLeft, int iMarginRight, int iMarginBottom, int iLineSpacing, bool bDrawShadow,
+            bool bOriginalAscii);
 
         /** @brief 释放 GDI 资源和字形缓存 */
         ~ExtFont();
@@ -150,10 +158,12 @@ namespace H3FontExtension
          * @param iMarginBottom 底部边距
          * @param iLineSpacing 行间距
          * @param bDrawShadow  是否绘制阴影
+         * @param bOriginalAscii ASCII 字符是否使用原版 .fnt 位图字体
          * @return 加载成功返回 true，任一 GDI 资源创建失败返回 false
          */
         bool __fastcall LoadGdiFont(const char* fontName, int iHeight, int iWidth, bool bBold, bool bAntiAlias,
-            int iMarginLeft, int iMarginRight, int iMarginBottom, int iLineSpacing, bool bDrawShadow);
+            int iMarginLeft, int iMarginRight, int iMarginBottom, int iLineSpacing, bool bDrawShadow,
+            bool bOriginalAscii);
 
         /**
          * @brief GBK 区码/位码 → wchar_t 转换（带全局查表缓存，避免重复调用 MultiByteToWideChar）
