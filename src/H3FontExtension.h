@@ -265,8 +265,10 @@ namespace H3FontExtension
      */
     constexpr inline static WORD RGB888toRGB565(DWORD color)
     {
-        return ((((color >> 16) & 0xFF) >> 3) & 0x1F) << 11 | ((((color >> 8) & 0xFF) >> 2) & 0x3F) << 5 |
-            (((color & 0xFF) >> 3) & 0x1F);
+        const DWORD r = (color >> 16) & 0xFF;
+        const DWORD g = (color >> 8) & 0xFF;
+        const DWORD b = color & 0xFF;
+        return static_cast<WORD>(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
     }
 
     // ============================================================

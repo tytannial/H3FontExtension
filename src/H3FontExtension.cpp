@@ -46,6 +46,14 @@ namespace H3FontExtension
     static int BitMode = -1;
 
     /**
+     * @brief 游戏位深标志地址
+     *
+     * 原版 H3BitMode 读取的字节：HD Mod 在 32 位模式下运行时将其立即数补丁为 4，
+     * 16 位模式保持原值，据此判断色深模式
+     */
+    constexpr uintptr_t GameBitDepthAddress = 0x5FA22B;
+
+    /**
      * @brief GBK 双字节 → wchar_t 全局查表缓存
      *
      * 索引为 (区码 << 8) | 位码，0 表示尚未转换。
@@ -199,6 +207,23 @@ namespace H3FontExtension
         return *this;
     }
 
+    /** @brief 创建 GDI 字形字体（失败返回 nullptr，调用方负责回退/清理） */
+    static HFONT CreateGlyphFont(LPCSTR fontName, int fontHeightPx, int fontWeight, DWORD quality)
+    {
+        return CreateFontA(
+            fontHeightPx,                   // lfHeight（负值 = 字符高度）
+            0,                              // lfWidth（0 = 自适应）
+            0, 0,                           // escapement, orientation
+            fontWeight,                     // fontWeight（FW_BOLD 或 FW_NORMAL）
+            FALSE, FALSE, FALSE,            // italic, underline, strikeout
+            DEFAULT_CHARSET,
+            OUT_DEFAULT_PRECIS,
+            CLIP_DEFAULT_PRECIS,
+            quality,                        // CLEARTYPE_QUALITY 或 NONANTIALIASED_QUALITY
+            DEFAULT_PITCH | FF_DONTCARE,
+            fontName);
+    }
+
     /**
      * @brief 通过 GDI 加载系统字体（唯一模式）
      *
@@ -259,29 +284,10 @@ namespace H3FontExtension
         const int fontWeight = bBold ? FW_BOLD : FW_NORMAL;
         const DWORD quality = bAntiAlias ? CLEARTYPE_QUALITY : NONANTIALIASED_QUALITY;
 
-        // 尝试从系统名创建字体，失败则使用备选方案
-        hGlyphFont = CreateFontA(
-            fontHeightPx,                   // lfHeight（负值 = 字符高度）
-            0,                              // lfWidth（0 = 自适应）
-            0, 0,                           // escapement, orientation
-            fontWeight,                     // fontWeight（FW_BOLD 或 FW_NORMAL）
-            FALSE, FALSE, FALSE,            // italic, underline, strikeout
-            DEFAULT_CHARSET,
-            OUT_DEFAULT_PRECIS,
-            CLIP_DEFAULT_PRECIS,
-            quality,                        // CLEARTYPE_QUALITY 或 NONANTIALIASED_QUALITY
-            DEFAULT_PITCH | FF_DONTCARE,
-            fontName);
-
+        // 尝试从系统名创建字体，失败则回退宋体
+        hGlyphFont = CreateGlyphFont(fontName, fontHeightPx, fontWeight, quality);
         if (!hGlyphFont)
-        {
-            // 回退：使用宋体
-            hGlyphFont = CreateFontA(
-                fontHeightPx, 0, 0, 0, fontWeight,
-                FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-                OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                quality, DEFAULT_PITCH | FF_DONTCARE, "SimSun");
-        }
+            hGlyphFont = CreateGlyphFont("SimSun", fontHeightPx, fontWeight, quality);
 
         if (!hGlyphFont)
         {
@@ -701,6 +707,7 @@ namespace H3FontExtension
         dst.lineWidth = src.lineWidth;
         dst.text.clear();
         dst.stops.clear();
+        dst.stops.reserve(4); // 典型行的颜色切换次数很少，避免小规模多次扩容
 
         if (src.lineWidth == 0)
             return;
@@ -1091,7 +1098,7 @@ namespace H3FontExtension
     static void UpdateBitMode()
     {
         const bool is32 = (gGamePalette != nullptr && isHDMod32Bit()) ||
-            (*reinterpret_cast<const uint8_t*>(0x5FA22B) == 4);
+            (*reinterpret_cast<const uint8_t*>(GameBitDepthAddress) == 4);
         const int newMode = is32 ? 1 : 0;
         if (BitMode != newMode)
         {
@@ -1183,7 +1190,13 @@ namespace H3FontExtension
         if (span <= 0 || rows <= 0 || !pFont->Data)
             return false;
 
-        const uint8_t* fontBuf = pFont->Data + pFont->fr.Offset[static_cast<uint8_t>(ch)];
+        // 字形偏移与尺寸越界保护（防御损坏/异常的字体数据）
+        const uint32_t glyphOffset = pFont->fr.Offset[static_cast<uint8_t>(ch)];
+        if (glyphOffset >= pFont->DataSize ||
+            glyphOffset + static_cast<size_t>(span) * rows > pFont->DataSize)
+            return false;
+
+        const uint8_t* fontBuf = pFont->Data + glyphOffset;
 
         const int pcxW = pOutputPcx->Width;
         const int pcxH = pOutputPcx->Height;
@@ -1204,11 +1217,11 @@ namespace H3FontExtension
         if (rowStart >= rowEnd)
             return false;
 
+        uint8_t* rowBuf = GetPcxRow(pOutputPcx, iY + rowStart);
+        const uint8_t* srcRow = fontBuf + static_cast<size_t>(rowStart) * span;
+
         for (int rowIdx = rowStart; rowIdx < rowEnd; ++rowIdx)
         {
-            uint8_t* rowBuf = GetPcxRow(pOutputPcx, iY + rowIdx);
-            const uint8_t* srcRow = fontBuf + static_cast<std::size_t>(rowIdx) * span;
-
             for (int colIdx = colStart; colIdx < colEnd; ++colIdx)
             {
                 const uint8_t pixel = srcRow[colIdx];
@@ -1219,6 +1232,9 @@ namespace H3FontExtension
                 const DWORD color = (pixel == 0xFF) ? uFontColor : shadowColor;
                 WritePixel<Is32>(rowBuf, startX + colIdx, color);
             }
+
+            rowBuf += pOutputPcx->Pitch;
+            srcRow += span;
         }
 
         return true;
@@ -1282,11 +1298,11 @@ namespace H3FontExtension
 
         const bool drawShadow = cFont->DrawShadow;
 
+        uint8_t* rowBuf = GetPcxRow(pOutputPcx, iY + rowStart);
+        const uint8_t* glyphRow = glyph + static_cast<size_t>(rowStart) * glyphW;
+
         for (int rowIdx = rowStart; rowIdx < rowEnd; ++rowIdx)
         {
-            uint8_t* rowBuf = GetPcxRow(pOutputPcx, iY + rowIdx);
-            const uint8_t* glyphRow = glyph + static_cast<std::size_t>(rowIdx) * glyphW;
-
             // 阴影行（下移 1 像素），越界则不绘制
             uint8_t* shadowRowBuf = nullptr;
             if (drawShadow && iY + rowIdx + 1 < pcxH)
@@ -1313,6 +1329,9 @@ namespace H3FontExtension
                         BlendShadow<Is32>(shadowRowBuf, px + 1, shadowColor, alpha);
                 }
             }
+
+            rowBuf += pOutputPcx->Pitch;
+            glyphRow += glyphW;
         }
 
         return true;
@@ -1375,11 +1394,13 @@ namespace H3FontExtension
             const std::size_t stopCount = line.stops.size();
 
             const int lineY = iY + startY + rowIdx * fontHeight;
+            const int asciiLineY = lineY + asciiShift; // 原版位图 ASCII 行位置
+            const int gdiLineY = lineY + shift;        // GDI 字形行内居中位置
 
-            // 原版位图 ASCII 以原始字高在行高内居中，与 GDI 字形的偏移不同
-            auto glyphY = [&](wchar_t wch)
+            // 原版位图 ASCII 与 GDI 字形的垂直偏移不同，绘制时按字符类型选择
+            auto glyphY = [&](wchar_t wch) -> int
             {
-                return lineY + (extFont->UsesOriginalAscii(wch) ? asciiShift : shift);
+                return extFont->UsesOriginalAscii(wch) ? asciiLineY : gdiLineY;
             };
 
             // 本行可见字符索引（与原始引擎 DrawStringExecute 的 colora 计数一致）
