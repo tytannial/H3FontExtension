@@ -7,6 +7,7 @@
 #include <Windows.h>
 
 #include <array>
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
@@ -214,7 +215,7 @@ namespace H3FontExtension
      */
     struct ColorStop
     {
-        size_t bytePos; ///< 在 cleanText 中的字节偏移
+        std::size_t bytePos; ///< 在 cleanText 中的字节偏移
         DWORD  color;   ///< 切换后的渲染颜色（已转换为当前色深格式）
     };
 

@@ -6,9 +6,9 @@
 #include <cctype>
 #include <charconv>
 #include <cstring>
+#include <exception>
 #include <unordered_map>
-
-using namespace std;
+#include <utility>
 
 namespace H3FontExtension
 {
@@ -366,7 +366,7 @@ namespace H3FontExtension
             return nullptr;
 
         // 清除背景：top-down DIB 是连续内存，直接 memset，无需创建 GDI 画刷
-        memset(pGlyphBits, 0, static_cast<size_t>(bufW) * bufH * 4);
+        memset(pGlyphBits, 0, static_cast<std::size_t>(bufW) * bufH * 4);
 
         // 以白色绘制字符（ClearType 会生成彩色子像素）
         TextOutW(hdcGlyph, MarginLeft, 0, &ch, 1);
@@ -374,10 +374,10 @@ namespace H3FontExtension
 
         // 提取 alpha 掩膜：max(R,G,B) 作为覆盖度
         auto glyph = std::make_unique<GlyphData>();
-        glyph->alpha.resize(static_cast<size_t>(bufW) * bufH);
+        glyph->alpha.resize(static_cast<std::size_t>(bufW) * bufH);
 
         const uint8_t* src = static_cast<const uint8_t*>(pGlyphBits);
-        for (size_t i = 0; i < glyph->alpha.size(); ++i)
+        for (std::size_t i = 0; i < glyph->alpha.size(); ++i)
         {
             const uint8_t b = src[i * 4];
             const uint8_t g = src[i * 4 + 1];
@@ -706,14 +706,14 @@ namespace H3FontExtension
             return;
 
         const std::string& raw = src.Text;
-        const size_t len = raw.size();
+        const std::size_t len = raw.size();
 
         // 预分配：clean text 最多和 raw 一样长，通常更短
         dst.text.reserve(len);
 
         DWORD curColor = defaultColor;
 
-        for (size_t i = 0; i < len; )
+        for (std::size_t i = 0; i < len; )
         {
             const uint8_t code = static_cast<uint8_t>(raw[i]);
 
@@ -729,7 +729,7 @@ namespace H3FontExtension
                     if (IsTextColorEnable)
                     {
                         ++i;
-                        const size_t codeStart = i;
+                        const std::size_t codeStart = i;
                         while (i < len && raw[i] != '}')
                             ++i;
 
@@ -844,7 +844,7 @@ namespace H3FontExtension
      * @param lines     [out] 拆分结果（含颜色码的原始行）
      */
     static void __stdcall SplitTextIntoLines(H3FontExt* pFont, LPCSTR szText, const int iBoxWidth,
-        vector<TextLineStruct>& lines)
+        std::vector<TextLineStruct>& lines)
     {
         if (!*szText)
             return;
@@ -1016,7 +1016,7 @@ namespace H3FontExtension
                 lineBuf.append(blankCount, ' ');
 
             // 保留颜色标记原始字节（PreprocessLine 将在渲染阶段剥离）
-            lineBuf.append(wordStart, static_cast<size_t>(realEnd - wordStart));
+            lineBuf.append(wordStart, static_cast<std::size_t>(realEnd - wordStart));
             lineWidth += wordWidth + blankWidth;
             UpdateColorState(wordStart, realEnd, activeTag, highlightActive);
             szText = realEnd;
@@ -1050,7 +1050,7 @@ namespace H3FontExtension
         std::vector<CleanLine> lines;  ///< 预处理结果
     };
 
-    static constexpr size_t LayoutCacheSize = 128;
+    static constexpr std::size_t LayoutCacheSize = 128;
     static LayoutEntry g_LayoutCache[LayoutCacheSize];
 
     /** @brief FNV-1a 64 位字符串哈希 */
@@ -1153,7 +1153,7 @@ namespace H3FontExtension
     /** @brief 位图行起始指针（对应旧 H3LoadedPcx16::GetRow，调用方负责边界检查） */
     static inline uint8_t* GetPcxRow(Bitmap16Bit* pcx, int row)
     {
-        return reinterpret_cast<uint8_t*>(pcx->map) + static_cast<size_t>(row) * pcx->Pitch;
+        return reinterpret_cast<uint8_t*>(pcx->map) + static_cast<std::size_t>(row) * pcx->Pitch;
     }
 
     /**
@@ -1207,7 +1207,7 @@ namespace H3FontExtension
         for (int rowIdx = rowStart; rowIdx < rowEnd; ++rowIdx)
         {
             uint8_t* rowBuf = GetPcxRow(pOutputPcx, iY + rowIdx);
-            const uint8_t* srcRow = fontBuf + static_cast<size_t>(rowIdx) * span;
+            const uint8_t* srcRow = fontBuf + static_cast<std::size_t>(rowIdx) * span;
 
             for (int colIdx = colStart; colIdx < colEnd; ++colIdx)
             {
@@ -1285,7 +1285,7 @@ namespace H3FontExtension
         for (int rowIdx = rowStart; rowIdx < rowEnd; ++rowIdx)
         {
             uint8_t* rowBuf = GetPcxRow(pOutputPcx, iY + rowIdx);
-            const uint8_t* glyphRow = glyph + static_cast<size_t>(rowIdx) * glyphW;
+            const uint8_t* glyphRow = glyph + static_cast<std::size_t>(rowIdx) * glyphW;
 
             // 阴影行（下移 1 像素），越界则不绘制
             uint8_t* shadowRowBuf = nullptr;
@@ -1371,8 +1371,8 @@ namespace H3FontExtension
 
             // 颜色跟踪
             DWORD curColor = defaultColor;
-            size_t stopIdx = 0;
-            const size_t stopCount = line.stops.size();
+            std::size_t stopIdx = 0;
+            const std::size_t stopCount = line.stops.size();
 
             const int lineY = iY + startY + rowIdx * fontHeight;
 
@@ -1388,7 +1388,7 @@ namespace H3FontExtension
             while (p < end)
             {
                 // 检查当前位置是否有颜色变更
-                const size_t bytePos = static_cast<size_t>(p - textData);
+                const std::size_t bytePos = static_cast<std::size_t>(p - textData);
                 while (stopIdx < stopCount && line.stops[stopIdx].bytePos == bytePos)
                 {
                     curColor = line.stops[stopIdx].color;
@@ -1613,7 +1613,7 @@ namespace H3FontExtension
 
         if (wordWidth > maxWidth)
             maxWidth = wordWidth;
-        return clamp(maxWidth, BoxWidthMin, BoxWidthMax);
+        return std::clamp(maxWidth, BoxWidthMin, BoxWidthMax);
     }
 
     /**
@@ -1803,12 +1803,12 @@ namespace H3FontExtension
         if (BoxWidthMax < 0)
             BoxWidthMax = maxWidth;
         else
-            BoxWidthMax = clamp(BoxWidthMax, 256, maxWidth);
+            BoxWidthMax = std::clamp(BoxWidthMax, 256, maxWidth);
 
         if (BoxWidthMin < 0)
             BoxWidthMin = maxWidth;
         else
-            BoxWidthMin = clamp(BoxWidthMin, 256, BoxWidthMax);
+            BoxWidthMin = std::clamp(BoxWidthMin, 256, BoxWidthMax);
     }
 
     // ============================================================
