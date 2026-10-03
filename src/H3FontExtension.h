@@ -38,8 +38,8 @@ namespace H3FontExtension
     /** @brief 双字节编码位码起始值（GBK/DBCS 第二字节判定阈值） */
     constexpr uint8_t DBCS_POSITION = 0x40;
 
-    /** @brief 字符阴影颜色索引 */
-    constexpr uint16_t ShadowColor = 0;
+    /** @brief 阴影色在调色板中的索引（与原版 font::DrawCharacter 使用的索引 32 一致） */
+    constexpr int ShadowColorIndex = 32;
 
     // ============================================================
     // 枚举

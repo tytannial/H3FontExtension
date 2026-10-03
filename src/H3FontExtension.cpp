@@ -1174,7 +1174,7 @@ namespace H3FontExtension
      */
     template<bool Is32>
     static bool H3Font_DrawCharBitmap(H3FontExt* pFont, Bitmap16Bit* pOutputPcx, wchar_t ch,
-        int iX, int iY, DWORD uFontColor)
+        int iX, int iY, DWORD uFontColor, DWORD shadowColor)
     {
         const auto& spacing = pFont->fr.abc[static_cast<uint8_t>(ch)];
         const int span = spacing.abcB;
@@ -1215,8 +1215,8 @@ namespace H3FontExtension
                 if (!pixel)
                     continue;
 
-                // 255 为正常前景，其余非零值为原版位图自带的阴影/过渡色
-                const DWORD color = (pixel == 0xFF) ? uFontColor : ShadowColor;
+                // 255 为正常前景，其余非零值为原版位图自带的阴影/过渡色（调色板索引 32）
+                const DWORD color = (pixel == 0xFF) ? uFontColor : shadowColor;
                 WritePixel<Is32>(rowBuf, startX + colIdx, color);
             }
         }
@@ -1242,13 +1242,13 @@ namespace H3FontExtension
      */
     template<bool Is32>
     static bool H3Font_DrawChar(H3FontExt* pFont, Bitmap16Bit* pOutputPcx, wchar_t wch,
-        int iX, int iY, DWORD uFontColor)
+        int iX, int iY, DWORD uFontColor, DWORD shadowColor)
     {
         auto cFont = pFont->ExtData;
 
         // 原版 ASCII 位图路径（字体缓冲区缺失时回退 GDI）
         if (cFont->UsesOriginalAscii(wch) && pFont->Data)
-            return H3Font_DrawCharBitmap<Is32>(pFont, pOutputPcx, wch, iX, iY, uFontColor);
+            return H3Font_DrawCharBitmap<Is32>(pFont, pOutputPcx, wch, iX, iY, uFontColor, shadowColor);
 
         // 非 GBK 字符 → 跳过（避免 GDI 渲染为方块）
         if (!ExtFont::IsGbkChar(wch))
@@ -1310,7 +1310,7 @@ namespace H3FontExtension
                     const bool overlap = (rowIdx + 1 < glyphH && colIdx + 1 < glyphW)
                         && glyphRow[glyphW + colIdx + 1] > 0;
                     if (!overlap)
-                        BlendShadow<Is32>(shadowRowBuf, px + 1, ShadowColor, alpha);
+                        BlendShadow<Is32>(shadowRowBuf, px + 1, shadowColor, alpha);
                 }
             }
         }
@@ -1338,12 +1338,13 @@ namespace H3FontExtension
     template<bool Is32>
     static void DrawLines(H3FontExt* pFont, Bitmap16Bit* pPcx, const std::vector<CleanLine>& textLines,
         int iX, int iY, int startY, int iBoxWidth, int iBoxHeight, uint32_t uAlignFlags,
-        DWORD defaultColor, int shift, int fontHeight, int cursorPos)
+        DWORD defaultColor, DWORD shadowColor, int shift, int fontHeight, int cursorPos)
     {
         auto* extFont = pFont->ExtData;
         const int lineCount = static_cast<int>(textLines.size());
         const int bottomBound = iY + iBoxHeight;
-        const int asciiShift = (fontHeight - pFont->oriHeight) / 2; // 原版位图 ASCII 垂直偏移
+        // 原版位图 ASCII 位置：行内居中 + 原版基线偏移（对应原版 DrawStringExecute 的 y + fr.baseyoffset）
+        const int asciiShift = (fontHeight - pFont->oriHeight) / 2 + pFont->fr.baseyoffset;
 
         for (int rowIdx = 0; rowIdx < lineCount; ++rowIdx)
         {
@@ -1351,8 +1352,8 @@ namespace H3FontExtension
             if (line.lineWidth == 0)
                 continue;
 
-            // 防止法术书计算有误
-            if (iY + startY + (rowIdx + 1) * pFont->oriHeight > bottomBound)
+            // 行超出文本框底部时停止（与原版 DrawStringExecute 按 fr.height 的行裁剪一致）
+            if (iY + startY + (rowIdx + 1) * fontHeight > bottomBound)
                 break;
 
             // 水平对齐
@@ -1399,9 +1400,9 @@ namespace H3FontExtension
                 if (IsSingleByte(code))
                 {
                     H3Font_DrawChar<Is32>(pFont, pPcx, (wchar_t)code,
-                        curX, glyphY((wchar_t)code), curColor);
+                        curX, glyphY((wchar_t)code), curColor, shadowColor);
                     if (cursorPos == charIdx)
-                        H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, glyphY(L'_'), defaultColor);
+                        H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, glyphY(L'_'), defaultColor, shadowColor);
                     curX += CharWidthPx(pFont, (wchar_t)code);
                     ++p;
                     ++charIdx;
@@ -1413,9 +1414,9 @@ namespace H3FontExtension
                     {
                         const wchar_t wch = ExtFont::GbkToWchar(code, nextCode);
                         H3Font_DrawChar<Is32>(pFont, pPcx, wch,
-                            curX, glyphY(wch), curColor);
+                            curX, glyphY(wch), curColor, shadowColor);
                         if (cursorPos == charIdx)
-                            H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, glyphY(L'_'), defaultColor);
+                            H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, glyphY(L'_'), defaultColor, shadowColor);
                         curX += CharWidthPx(pFont, wch);
                         p += 2;
                         ++charIdx;
@@ -1424,9 +1425,9 @@ namespace H3FontExtension
                     {
                         // 无效双字节，当单字节处理
                         H3Font_DrawChar<Is32>(pFont, pPcx, (wchar_t)code,
-                            curX, glyphY((wchar_t)code), curColor);
+                            curX, glyphY((wchar_t)code), curColor, shadowColor);
                         if (cursorPos == charIdx)
-                            H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, glyphY(L'_'), defaultColor);
+                            H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, glyphY(L'_'), defaultColor, shadowColor);
                         curX += CharWidthPx(pFont, (wchar_t)code);
                         ++p;
                         ++charIdx;
@@ -1436,7 +1437,7 @@ namespace H3FontExtension
 
             // 行尾光标（cursorPos 等于本行可见字符数）
             if (cursorPos != -1 && cursorPos == charIdx)
-                H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, glyphY(L'_'), curColor);
+                H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, glyphY(L'_'), curColor, shadowColor);
         }
     }
 
@@ -1475,6 +1476,7 @@ namespace H3FontExtension
         const uint32_t ci = (uColorIdx & 0x100) ? (uColorIdx & 0xFE) : (uColorIdx + 9);
         const DWORD defaultColor = GetColor(pFont->p16, ci);
         const DWORD highlightColor = GetColor(pFont->p16, ci + 1);
+        const DWORD shadowColor = GetColor(pFont->p16, ShadowColorIndex);
         const bool is32bit = BitMode != 0;
 
         auto* extFont = pFont->ExtData;
@@ -1490,14 +1492,14 @@ namespace H3FontExtension
         {
             if (cursorPos != -1)
             {
-                // 光标为 ASCII，原版位图模式下按原始字高居中
+                // 光标为 ASCII，原版位图模式下按原始字高居中并叠加原版基线偏移
                 const int cursorY = iY + (extFont->UsesOriginalAscii(L'_')
-                    ? (fontHeight - pFont->oriHeight) / 2 : shift);
+                    ? (fontHeight - pFont->oriHeight) / 2 + pFont->fr.baseyoffset : shift);
 
                 if (is32bit)
-                    H3Font_DrawChar<true>(pFont, pPcx, L'_', iX, cursorY, defaultColor);
+                    H3Font_DrawChar<true>(pFont, pPcx, L'_', iX, cursorY, defaultColor, shadowColor);
                 else
-                    H3Font_DrawChar<false>(pFont, pPcx, L'_', iX, cursorY, defaultColor);
+                    H3Font_DrawChar<false>(pFont, pPcx, L'_', iX, cursorY, defaultColor, shadowColor);
             }
             return;
         }
@@ -1539,12 +1541,12 @@ namespace H3FontExtension
         if (is32bit)
         {
             DrawLines<true>(pFont, pPcx, textLines, iX, iY, startY, iBoxWidth, iBoxHeight,
-                uAlignFlags, defaultColor, shift, fontHeight, cursorPos);
+                uAlignFlags, defaultColor, shadowColor, shift, fontHeight, cursorPos);
         }
         else
         {
             DrawLines<false>(pFont, pPcx, textLines, iX, iY, startY, iBoxWidth, iBoxHeight,
-                uAlignFlags, defaultColor, shift, fontHeight, cursorPos);
+                uAlignFlags, defaultColor, shadowColor, shift, fontHeight, cursorPos);
         }
     }
 
