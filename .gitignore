@@ -33,6 +33,16 @@ bld/
 [Ll]og/
 [Ll]ogs/
 
+# CMake
+/build/
+CMakeUserPresets.json
+CMakeFiles/
+CMakeCache.txt
+_deps/
+
+# IDA 数据库与逆向文件
+/idb/
+
 # Visual Studio 2015/2017 cache/options directory
 .vs/
 # Uncomment if you have tasks that create the project's static files in wwwroot

@@ -1,12 +1,18 @@
 #pragma once
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
+#include <Windows.h>
+
 #include <array>
 #include <memory>
 #include <string>
 #include <vector>
 
-#define _H3API_PATCHER_X86_
-#include <H3API.hpp>
+#include <nh3api/core.hpp>
+#include <nh3api/hd_mod.hpp>
 
 namespace H3FontExtension
 {
@@ -85,7 +91,7 @@ namespace H3FontExtension
     {
     public:
         // ---- 字体度量 ----
-        INT8   Height          = 0;      ///< 字形渲染高度（像素）
+        int8_t Height          = 0;      ///< 字形渲染高度（像素）
         int    Width           = 0;      ///< 字形渲染宽度（像素，不含边距）
         bool   Bold            = false;  ///< 是否加粗（true = FW_BOLD）
         bool   AntiAlias       = true;   ///< 是否启用 ClearType 抗锯齿
@@ -193,13 +199,13 @@ namespace H3FontExtension
     };
 
     /**
-     * @brief 扩展后的 H3Font 结构体（比原始 H3Font 多 8 字节）
+     * @brief 扩展后的游戏字体结构体（比原始 font 多 8 字节）
      *
      * 通过修改游戏内存分配大小实现，额外字段存储原始高度和扩展字库指针。
      */
-    struct H3FontExt : h3::H3Font
+    struct H3FontExt : font
     {
-        int      oriHeight; ///< 原始字体高度（扩展前的 height 值）
+        int      oriHeight; ///< 原始字体高度（扩展前的 fr.height 值）
         ExtFont* ExtData;   ///< 关联的扩展字库指针
     };
 

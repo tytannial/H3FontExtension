@@ -1,0 +1,54 @@
+{
+  "version": 4,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 24,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "vs2026-x86",
+      "displayName": "Visual Studio 2026 (Win32)",
+      "description": "依赖通过 FetchContent 从 GitHub 获取",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "Win32",
+      "binaryDir": "${sourceDir}/build/vs2026-x86"
+    },
+    {
+      "name": "vs2026-x86-local",
+      "displayName": "Visual Studio 2026 (Win32, 本地 NH3API 源码)",
+      "description": "NH3API 复用本地 D:/CodeProject/public/NH3API，离线可用",
+      "inherits": "vs2026-x86",
+      "binaryDir": "${sourceDir}/build/vs2026-x86-local",
+      "cacheVariables": {
+        "FETCHCONTENT_SOURCE_DIR_NH3API": "D:/CodeProject/public/NH3API"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug",
+      "displayName": "Debug",
+      "configurePreset": "vs2026-x86",
+      "configuration": "Debug"
+    },
+    {
+      "name": "release",
+      "displayName": "Release",
+      "configurePreset": "vs2026-x86",
+      "configuration": "Release"
+    },
+    {
+      "name": "debug-local",
+      "displayName": "Debug (本地 NH3API)",
+      "configurePreset": "vs2026-x86-local",
+      "configuration": "Debug"
+    },
+    {
+      "name": "release-local",
+      "displayName": "Release (本地 NH3API)",
+      "configurePreset": "vs2026-x86-local",
+      "configuration": "Release"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 #include "H3FontExtension.h"
 
-#include <toml.hpp>
+#include <toml++/toml.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -8,7 +8,6 @@
 #include <cstring>
 #include <unordered_map>
 
-using namespace h3;
 using namespace std;
 
 namespace H3FontExtension
@@ -43,8 +42,8 @@ namespace H3FontExtension
     /** @brief 字体名 → 扩展字库映射表（key 为小写字体名，如 "medfont.fnt"） */
     static std::unordered_map<std::string, ExtFont> g_ExtFontTable;
 
-    /** @brief 当前是否为 32 位色深模式（DDraw 初始化时更新） */
-    static bool Is32BitMode = false;
+    /** @brief 当前色深模式：-1 = 尚未判定，0 = 16 位，1 = 32 位 */
+    static int BitMode = -1;
 
     /**
      * @brief GBK 双字节 → wchar_t 全局查表缓存
@@ -421,19 +420,19 @@ namespace H3FontExtension
     // 像素混合通过模板参数在绘制入口处一次性分派，内循环可完全内联。
 
     /** @brief 16 位色深：从调色板获取颜色 */
-    static DWORD __fastcall GetColor16(const H3BasePalette565& palette, int colorIdx)
+    static DWORD __fastcall GetColor16(const TPalette16& palette, int colorIdx)
     {
-        return palette.color[colorIdx].Value();
+        return palette.Palette[colorIdx];
     }
 
-    /** @brief 32 位色深：从调色板获取颜色 */
-    static DWORD __fastcall GetColor32(const H3BasePalette565& palette, int colorIdx)
+    /** @brief 32 位色深：从调色板获取颜色（HD Mod 32 位调色板指针布局） */
+    static DWORD __fastcall GetColor32(const TPalette16& palette, int colorIdx)
     {
-        return palette.palette32->colors[colorIdx];
+        return reinterpret_cast<const HD::Palette&>(palette).data32()[colorIdx];
     }
 
     /** @brief 色深自适应：获取调色板颜色的函数指针（默认 16 位，DDraw 初始化后更新） */
-    static DWORD(__fastcall* GetColor)(const H3BasePalette565& palette, int colorIdx) = GetColor16;
+    static DWORD(__fastcall* GetColor)(const TPalette16& palette, int colorIdx) = GetColor16;
 
     /**
      * @brief 精确除以 255（避免整数除法指令）
@@ -448,7 +447,7 @@ namespace H3FontExtension
 
     /** @brief alpha 混合前景色（Is32=true: RGB888，false: RGB565） */
     template<bool Is32>
-    static inline void BlendPixel(PUINT8 rowBuf, int col, DWORD fgColor, uint8_t alpha)
+    static inline void BlendPixel(uint8_t* rowBuf, int col, DWORD fgColor, uint8_t alpha)
     {
         if constexpr (Is32)
         {
@@ -481,7 +480,7 @@ namespace H3FontExtension
 
     /** @brief alpha 混合阴影色（Is32=true: RGB888 混合，false: 直写保持原风格） */
     template<bool Is32>
-    static inline void BlendShadow(PUINT8 rowBuf, int col, DWORD shadowColor, uint8_t alpha)
+    static inline void BlendShadow(uint8_t* rowBuf, int col, DWORD shadowColor, uint8_t alpha)
     {
         if constexpr (Is32)
         {
@@ -502,7 +501,7 @@ namespace H3FontExtension
 
     /** @brief 直接写入像素（无混合，用于原版位图字体的硬边缘像素） */
     template<bool Is32>
-    static inline void WritePixel(PUINT8 rowBuf, int col, DWORD color)
+    static inline void WritePixel(uint8_t* rowBuf, int col, DWORD color)
     {
         if constexpr (Is32)
             *(reinterpret_cast<DWORD*>(rowBuf) + col) = color;
@@ -525,8 +524,8 @@ namespace H3FontExtension
     {
         if (pFont->ExtData->UsesOriginalAscii(ch))
         {
-            const auto& spacing = pFont->width[ch];
-            return spacing.leftMargin + spacing.span + spacing.rightMargin;
+            const auto& spacing = pFont->fr.abc[static_cast<uint8_t>(ch)];
+            return spacing.abcA + spacing.abcB + spacing.abcC;
         }
         return pFont->ExtData->GetCharWidth(ch);
     }
@@ -1079,6 +1078,30 @@ namespace H3FontExtension
     }
 
     /**
+     * @brief 检测并更新色深模式（16/32 位）
+     *
+     * 判定依据（任一成立即为 32 位）：
+     *   1. NH3API 的 HD Mod 兼容判定：全局调色板资源已被替换为 32 位调色板
+     *      （isHDMod32Bit 检查资源的 RType_palette32 类型）
+     *   2. 游戏位深标志：HD Mod 在 32 位模式下运行时将 0x5FA22B 处的位深立即数补丁为 4
+     *
+     * DDraw 初始化 hook 中调用一次，此后每次文本绘制前重新调用：
+     * 绘制时机足够晚（HD Mod 已完全初始化），判定最可靠，并能感知运行中的色深切换。
+     */
+    static void UpdateBitMode()
+    {
+        const bool is32 = (gGamePalette != nullptr && isHDMod32Bit()) ||
+            (*reinterpret_cast<const uint8_t*>(0x5FA22B) == 4);
+        const int newMode = is32 ? 1 : 0;
+        if (BitMode != newMode)
+        {
+            BitMode = newMode;
+            GetColor = is32 ? GetColor32 : GetColor16;
+            ClearLayoutCache();
+        }
+    }
+
+    /**
      * @brief 获取文本的预处理布局（缓存命中则零解析，未命中则构建并填充缓存）
      */
     static const std::vector<CleanLine>& GetOrCreateLayout(H3FontExt* pFont, LPCSTR szText, int iBoxWidth,
@@ -1127,6 +1150,12 @@ namespace H3FontExtension
     // Section 5: 字符 & 文本渲染
     // ============================================================
 
+    /** @brief 位图行起始指针（对应旧 H3LoadedPcx16::GetRow，调用方负责边界检查） */
+    static inline uint8_t* GetPcxRow(Bitmap16Bit* pcx, int row)
+    {
+        return reinterpret_cast<uint8_t*>(pcx->map) + static_cast<size_t>(row) * pcx->Pitch;
+    }
+
     /**
      * @brief 使用游戏原版 .fnt 位图绘制单个 ASCII 字符
      *
@@ -1144,22 +1173,20 @@ namespace H3FontExtension
      * @return 是否实际绘制了像素
      */
     template<bool Is32>
-    static bool H3Font_DrawCharBitmap(H3FontExt* pFont, H3LoadedPcx16* pOutputPcx, wchar_t ch,
+    static bool H3Font_DrawCharBitmap(H3FontExt* pFont, Bitmap16Bit* pOutputPcx, wchar_t ch,
         int iX, int iY, DWORD uFontColor)
     {
-        const auto& spacing = pFont->width[ch];
-        const int span = spacing.span;
+        const auto& spacing = pFont->fr.abc[static_cast<uint8_t>(ch)];
+        const int span = spacing.abcB;
         const int rows = pFont->oriHeight;
-        const int startX = iX + spacing.leftMargin;
-        if (span <= 0 || rows <= 0)
+        const int startX = iX + spacing.abcA;
+        if (span <= 0 || rows <= 0 || !pFont->Data)
             return false;
 
-        const PUINT8 fontBuf = pFont->GetChar(static_cast<UINT32>(ch));
-        if (!fontBuf)
-            return false;
+        const uint8_t* fontBuf = pFont->Data + pFont->fr.Offset[static_cast<uint8_t>(ch)];
 
-        const int pcxW = pOutputPcx->width;
-        const int pcxH = pOutputPcx->height;
+        const int pcxW = pOutputPcx->Width;
+        const int pcxH = pOutputPcx->Height;
 
         int colStart = 0, colEnd = span;
         if (startX < 0)
@@ -1179,7 +1206,7 @@ namespace H3FontExtension
 
         for (int rowIdx = rowStart; rowIdx < rowEnd; ++rowIdx)
         {
-            PUINT8 rowBuf = pOutputPcx->GetRow(iY + rowIdx);
+            uint8_t* rowBuf = GetPcxRow(pOutputPcx, iY + rowIdx);
             const uint8_t* srcRow = fontBuf + static_cast<size_t>(rowIdx) * span;
 
             for (int colIdx = colStart; colIdx < colEnd; ++colIdx)
@@ -1214,13 +1241,13 @@ namespace H3FontExtension
      * @return 是否实际绘制了像素
      */
     template<bool Is32>
-    static bool H3Font_DrawChar(H3FontExt* pFont, H3LoadedPcx16* pOutputPcx, wchar_t wch,
+    static bool H3Font_DrawChar(H3FontExt* pFont, Bitmap16Bit* pOutputPcx, wchar_t wch,
         int iX, int iY, DWORD uFontColor)
     {
         auto cFont = pFont->ExtData;
 
         // 原版 ASCII 位图路径（字体缓冲区缺失时回退 GDI）
-        if (cFont->UsesOriginalAscii(wch) && pFont->bitmapBuffer)
+        if (cFont->UsesOriginalAscii(wch) && pFont->Data)
             return H3Font_DrawCharBitmap<Is32>(pFont, pOutputPcx, wch, iX, iY, uFontColor);
 
         // 非 GBK 字符 → 跳过（避免 GDI 渲染为方块）
@@ -1233,8 +1260,8 @@ namespace H3FontExtension
 
         const int glyphW = cFont->GlyphWidth;
         const int glyphH = cFont->EffectiveHeight(); // 含底部扩展空间
-        const int pcxW = pOutputPcx->width;
-        const int pcxH = pOutputPcx->height;
+        const int pcxW = pOutputPcx->Width;
+        const int pcxH = pOutputPcx->Height;
 
         // ---- 按目标位图边界裁剪（GetRow 无边界检查，越界会破坏内存）----
         int colStart = 0, colEnd = glyphW;
@@ -1257,13 +1284,13 @@ namespace H3FontExtension
 
         for (int rowIdx = rowStart; rowIdx < rowEnd; ++rowIdx)
         {
-            PUINT8 rowBuf = pOutputPcx->GetRow(iY + rowIdx);
+            uint8_t* rowBuf = GetPcxRow(pOutputPcx, iY + rowIdx);
             const uint8_t* glyphRow = glyph + static_cast<size_t>(rowIdx) * glyphW;
 
             // 阴影行（下移 1 像素），越界则不绘制
-            PUINT8 shadowRowBuf = nullptr;
+            uint8_t* shadowRowBuf = nullptr;
             if (drawShadow && iY + rowIdx + 1 < pcxH)
-                shadowRowBuf = pOutputPcx->GetRow(iY + rowIdx + 1);
+                shadowRowBuf = GetPcxRow(pOutputPcx, iY + rowIdx + 1);
 
             for (int colIdx = colStart; colIdx < colEnd; ++colIdx)
             {
@@ -1309,7 +1336,7 @@ namespace H3FontExtension
      * @param cursorPos   输入光标位置（可见字符索引，-1 = 无光标；每行从 0 起算）
      */
     template<bool Is32>
-    static void DrawLines(H3FontExt* pFont, H3LoadedPcx16* pPcx, const std::vector<CleanLine>& textLines,
+    static void DrawLines(H3FontExt* pFont, Bitmap16Bit* pPcx, const std::vector<CleanLine>& textLines,
         int iX, int iY, int startY, int iBoxWidth, int iBoxHeight, uint32_t uAlignFlags,
         DWORD defaultColor, int shift, int fontHeight, int cursorPos)
     {
@@ -1332,8 +1359,8 @@ namespace H3FontExtension
             int startX = 0;
             switch (uAlignFlags)
             {
-            case eTextAlignment::HCENTER: startX = (iBoxWidth - line.lineWidth) / 2; break; // 居中
-            case eTextAlignment::HRIGHT:  startX = iBoxWidth - line.lineWidth;        break; // 右对齐
+            case font::CENTER_JUSTIFIED: startX = (iBoxWidth - line.lineWidth) / 2; break; // 居中
+            case font::RIGHT_JUSTIFIED:  startX = iBoxWidth - line.lineWidth;        break; // 右对齐
             }
 
             int curX = iX + startX;
@@ -1430,24 +1457,28 @@ namespace H3FontExtension
      * @param iBoxWidth   文本框像素宽度
      * @param iBoxHeight  文本框像素高度
      * @param uColorIdx   颜色索引（游戏调色板索引）
-     * @param uAlignFlags 对齐标志（eTextAlignment 位掩码）
+     * @param uAlignFlags 对齐标志（font::EJustify 位掩码）
      * @param iFontStyle  输入光标位置（可见字符索引，-1 = 无光标）
      */
-    static void __stdcall H3Font_DrawText(HiHook* h, H3FontExt* pFont, char* szText, H3LoadedPcx16* pPcx,
+    static void __stdcall H3Font_DrawText(HiHook* h, H3FontExt* pFont, char* szText, Bitmap16Bit* pPcx,
         int iX, int iY, int iBoxWidth, int iBoxHeight,
         uint32_t uColorIdx, uint32_t uAlignFlags, int iFontStyle)
     {
         if (!szText || iBoxWidth == 0 || !pPcx || !pFont->ExtData)
             return;
 
+        // 绘制前重新判定色深：此时 HD Mod 已完全初始化，判定最可靠，
+        // 且能感知运行中的色深切换
+        UpdateBitMode();
+
         // ========== 阶段一：解析颜色与字体度量 ==========
         const uint32_t ci = (uColorIdx & 0x100) ? (uColorIdx & 0xFE) : (uColorIdx + 9);
-        const DWORD defaultColor = GetColor(pFont->palette, ci);
-        const DWORD highlightColor = GetColor(pFont->palette, ci + 1);
-        const bool is32bit = Is32BitMode;
+        const DWORD defaultColor = GetColor(pFont->p16, ci);
+        const DWORD highlightColor = GetColor(pFont->p16, ci + 1);
+        const bool is32bit = BitMode != 0;
 
         auto* extFont = pFont->ExtData;
-        const int fontHeight = pFont->height;
+        const int fontHeight = pFont->fr.height;
         const int effHeight = extFont->EffectiveHeight(); // 含底部边距的有效字形高度
 
         // 统一垂直偏移：在行高内居中有效字形区域
@@ -1482,9 +1513,9 @@ namespace H3FontExtension
         // ========== 阶段三：垂直对齐 ==========
         int startY = 0;
 
-        if (uAlignFlags & eTextAlignment::VCENTER)
+        if (uAlignFlags & font::VERT_CENTER_JUSTIFIED)
         {
-            uAlignFlags &= ~eTextAlignment::VCENTER;
+            uAlignFlags &= ~font::VERT_CENTER_JUSTIFIED;
             const int totalH = fontHeight * lineCount;
             if (totalH >= iBoxHeight)
             {
@@ -1496,9 +1527,9 @@ namespace H3FontExtension
                 startY = (iBoxHeight - totalH) / 2;
             }
         }
-        else if (uAlignFlags & eTextAlignment::VBOTTOM)
+        else if (uAlignFlags & font::BOTTOM_JUSTIFIED)
         {
-            uAlignFlags &= ~eTextAlignment::VBOTTOM;
+            uAlignFlags &= ~font::BOTTOM_JUSTIFIED;
             const int totalH = fontHeight * lineCount;
             if (totalH < iBoxHeight)
                 startY = iBoxHeight - totalH;
@@ -1526,14 +1557,14 @@ namespace H3FontExtension
     // 内部使用 H3FontExt 扩展字体实现中文支持。
 
     /**
-     * @brief Hook: 将文本拆分为多行（返回 H3Vector<H3String>）
+     * @brief Hook: 将文本拆分为多行（返回 exe_vector<exe_string>）
      *
      * 替换游戏原始的文本拆分逻辑，支持双字节字符和颜色码。
      */
     static void __stdcall H3Font_SplitTextIntoLines(HiHook* h, H3FontExt* pFont, char* szText, const int iBoxWidth,
-        H3Vector<H3String>& lines)
+        exe_vector<exe_string>& lines)
     {
-        lines.RemoveAll();
+        lines.clear();
 
         if (!szText || !*szText || !pFont->ExtData)
             return;
@@ -1544,7 +1575,7 @@ namespace H3FontExtension
         SplitTextIntoLines(pFont, szText, iBoxWidth, scratch);
         for (const auto& line : scratch)
         {
-            lines.Add(H3String(line.Text.c_str()));
+            lines.emplace_back(line.Text.c_str());
         }
     }
 
@@ -1725,7 +1756,7 @@ namespace H3FontExtension
      *
      * 字体名匹配规则：小写字体名精确匹配 → 回退到 "medfont.fnt"。
      */
-    static H3Font* __stdcall H3Font_Load_Hook(HiHook* h, char* name)
+    static font* __stdcall H3Font_Load_Hook(HiHook* h, char* name)
     {
         // 复制到局部缓冲区再小写化，避免原地修改游戏内存中的字体名
         // （若指针指向只读内存将导致访问违例）
@@ -1733,22 +1764,23 @@ namespace H3FontExtension
         strncpy_s(fntName, name, sizeof(fntName) - 1);
         _strlwr(fntName);
 
-        auto font = FASTCALL_1(H3FontExt*, h->GetDefaultFunc(), fntName);
-        if (!font)
-            return font;
+        auto pFont = FASTCALL_1(H3FontExt*, h->GetDefaultFunc(), fntName);
+        if (!pFont)
+            return pFont;
 
         // 精确匹配 → 回退默认字体；不使用 operator[] 以免为未知字体插入空条目
         auto it = g_ExtFontTable.find(fntName);
         if (it == g_ExtFontTable.end())
             it = g_ExtFontTable.find("medfont.fnt");
         if (it == g_ExtFontTable.end())
-            return font;
+            return pFont;
 
-        font->ExtData = &it->second;
-        font->oriHeight = font->height;
+        pFont->ExtData = &it->second;
+        pFont->oriHeight = pFont->fr.height;
         // 行高 = max(原始高度, 有效字形高度 + 行间距)
-        font->height = std::max((int)font->height, font->ExtData->EffectiveHeight() + font->ExtData->LineSpacing);
-        return font;
+        pFont->fr.height = static_cast<uint8_t>(std::max(static_cast<int>(pFont->fr.height),
+            pFont->ExtData->EffectiveHeight() + pFont->ExtData->LineSpacing));
+        return pFont;
     }
 
     /**
@@ -1763,12 +1795,9 @@ namespace H3FontExtension
         FASTCALL_0(void, h->GetDefaultFunc());
 
         // 根据游戏的图像模式初始化图像渲染函数指针
-        Is32BitMode = (H3BitMode::Get() == 4);
-        GetColor = Is32BitMode ? GetColor32 : GetColor16;
+        UpdateBitMode();
 
-        ClearLayoutCache();
-
-        const auto maxWidth = H3GameWidth::Get() - 64 * 2;
+        const auto maxWidth = getScreenWidth(_P) - 64 * 2;
         if (BoxWidthMax < 0)
             BoxWidthMax = maxWidth;
         else
@@ -1795,7 +1824,7 @@ namespace H3FontExtension
     bool Init()
     {
 #ifndef NDEBUG
-        MessageBoxW(H3Hwnd::Get(), L"注入成功", L"调试中", 0);
+        MessageBoxW(hwndApp, L"注入成功", L"调试中", 0);
 #endif
 
         // ---------- 初始化 GBK 查表 ----------
@@ -1880,7 +1909,7 @@ namespace H3FontExtension
         }
         catch (const std::exception&)
         {
-            MessageBoxW(H3Hwnd::Get(), L"配置文件加载失败", L"错误", 0);
+            MessageBoxW(hwndApp, L"配置文件加载失败", L"错误", 0);
         }
 
         // 字体表可能已重建：清空布局缓存避免引用过期字库
@@ -1889,22 +1918,22 @@ namespace H3FontExtension
         // ---------- 注册 Hook ----------
 
         // DDraw 初始化时检测色深模式
-        _PI->WriteHiHook(0x601AB0, SPLICE_, FASTCALL_, EXTENDED_, Main_DirectDrawInit_Hook);
+        _PI->WriteHiHook(0x601AB0, SPLICE_, EXTENDED_, FASTCALL_, Main_DirectDrawInit_Hook);
 
-        // 扩展字体内存分配（H3Font → H3FontExt，+8 字节）
+        // 扩展字体内存分配（font → H3FontExt，+8 字节）
         _PI->WriteDword(0x55B9CE + 1, sizeof(H3FontExt));
 
         // 字体加载后挂载扩展字库
-        _PI->WriteHiHook(0x55BAE0, SPLICE_, THISCALL_, EXTENDED_, H3Font_Load_Hook);
+        _PI->WriteHiHook(0x55BAE0, SPLICE_, EXTENDED_, THISCALL_, H3Font_Load_Hook);
 
         // 文本渲染与布局 Hook
-        _PI->WriteHiHook(0x4B51F0, SPLICE_, THISCALL_, H3Font_DrawText);           // 文本绘制
-        _PI->WriteHiHook(0x4B5580, SPLICE_, THISCALL_, H3Font_GetLineCount);       // 计算文本行数
-        _PI->WriteHiHook(0x4B5680, SPLICE_, THISCALL_, H3Font_LineWidth);          // 首行文本像素宽度
-        _PI->WriteHiHook(0x4B56F0, SPLICE_, THISCALL_, H3Font_GetLineWidth);       // 最长文本行宽度
-        _PI->WriteHiHook(0x4B5770, SPLICE_, THISCALL_, H3Font_GetWordWidth);       // 最长单词宽度
-        _PI->WriteHiHook(0x4B57E0, SPLICE_, THISCALL_, H3Font_GetLineWrapWidth);   // 最长换行后宽度
-        _PI->WriteHiHook(0x4B58F0, SPLICE_, THISCALL_, H3Font_SplitTextIntoLines); // 拆分文本行
+        _PI->WriteHiHook(0x4B51F0, SPLICE_, EXTENDED_, THISCALL_, H3Font_DrawText);           // 文本绘制
+        _PI->WriteHiHook(0x4B5580, SPLICE_, EXTENDED_, THISCALL_, H3Font_GetLineCount);       // 计算文本行数
+        _PI->WriteHiHook(0x4B5680, SPLICE_, EXTENDED_, THISCALL_, H3Font_LineWidth);          // 首行文本像素宽度
+        _PI->WriteHiHook(0x4B56F0, SPLICE_, EXTENDED_, THISCALL_, H3Font_GetLineWidth);       // 最长文本行宽度
+        _PI->WriteHiHook(0x4B5770, SPLICE_, EXTENDED_, THISCALL_, H3Font_GetWordWidth);       // 最长单词宽度
+        _PI->WriteHiHook(0x4B57E0, SPLICE_, EXTENDED_, THISCALL_, H3Font_GetLineWrapWidth);   // 最长换行后宽度
+        _PI->WriteHiHook(0x4B58F0, SPLICE_, EXTENDED_, THISCALL_, H3Font_SplitTextIntoLines); // 拆分文本行
 
         return true;
     }
