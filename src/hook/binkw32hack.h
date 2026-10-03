@@ -1,5 +1,10 @@
 #pragma once
 
+// naked stub 的参数仅用于 stdcall 名称修饰（_Name@N 的字节数），函数体不引用，
+// 在此头文件内屏蔽未引用参数警告
+#pragma warning(push)
+#pragma warning(disable: 4100)
+
 static HINSTANCE hOriginalBinkW32 = NULL;
 static FARPROC hFuncEntry[72] = { 0 };
 
@@ -736,3 +741,5 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall RADTimerRead()
 		jmp hFuncEntry[71 * 4];
 	}
 }
+
+#pragma warning(pop)

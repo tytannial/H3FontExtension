@@ -4,6 +4,12 @@
 
 add_library(H3CN SHARED
     dllmain.cpp
+    ExtFont.cpp
+    ExtFont.h
+    GlyphRasterizer.cpp
+    GlyphRasterizer.h
+    GlyphRasterizerDWrite.cpp
+    GlyphRasterizerGdi.cpp
     H3FontExtension.cpp
     H3FontExtension.h
     hook/binkw32hack.h
@@ -24,7 +30,8 @@ target_compile_definitions(H3CN PRIVATE
     _UNICODE
 )
 
-target_compile_options(H3CN PRIVATE /utf-8 /W3 /sdl)
+# /W4 全警告等级；尖括号包含的第三方/系统头（NH3API、Windows SDK）豁免警告
+target_compile_options(H3CN PRIVATE /utf-8 /W4 /sdl /external:anglebrackets /external:W0)
 
 target_link_libraries(H3CN PRIVATE
     nh3api

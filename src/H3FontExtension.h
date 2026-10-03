@@ -6,11 +6,12 @@
 
 #include <Windows.h>
 
-#include <array>
 #include <cstddef>
-#include <memory>
+#include <cstdint>
 #include <string>
 #include <vector>
+
+#include "ExtFont.h"
 
 #include <nh3api/core.hpp>
 #include <nh3api/hd_mod.hpp>
@@ -32,12 +33,6 @@ namespace H3FontExtension
     // ============================================================
     // 常量定义
     // ============================================================
-
-    /** @brief 双字节编码区码起始值（GBK/DBCS 首字节判定阈值） */
-    constexpr uint8_t DBCS_SECTION = 0x81;
-
-    /** @brief 双字节编码位码起始值（GBK/DBCS 第二字节判定阈值） */
-    constexpr uint8_t DBCS_POSITION = 0x40;
 
     /** @brief 阴影色在调色板中的索引（与原版 font::DrawCharacter 使用的索引 32 一致） */
     constexpr int ShadowColorIndex = 32;
@@ -70,136 +65,6 @@ namespace H3FontExtension
     };
 
     /**
-     * @brief 已渲染字形的 alpha 掩膜数据
-     */
-    struct GlyphData
-    {
-        std::vector<uint8_t> alpha;  ///< 覆盖度掩膜（GlyphWidth × EffectiveHeight 字节）
-    };
-
-    /**
-     * @brief 扩展字库（GDI/ClearType 实时渲染，ASCII 可选原版位图）
-     *
-     * GBK 汉字通过系统 GDI 运行时渲染字形，缓存抗锯齿 alpha 数据和单个
-     * 字符的像素宽度。ASCII 字符的渲染方式由 OriginalAscii 开关决定：
-     * 开启时使用游戏原版 .fnt 位图（绘制与测宽均走原引擎数据），
-     * 关闭时同样走 GDI 实时渲染。
-     *
-     * 字形缓存仅保存 alpha 通道（1 字节/像素）：绘制时前景色来自
-     * 调色板，字形自身的 RGB 不参与混合，只用作透明度掩膜。
-     */
-    struct ExtFont
-    {
-    public:
-        // ---- 字体度量 ----
-        int8_t Height          = 0;      ///< 字形渲染高度（像素）
-        int    Width           = 0;      ///< 字形渲染宽度（像素，不含边距）
-        bool   Bold            = false;  ///< 是否加粗（true = FW_BOLD）
-        bool   AntiAlias       = true;   ///< 是否启用 ClearType 抗锯齿
-        int    MarginLeft      = 0;      ///< 左侧边距（像素）
-        int    MarginRight     = 0;      ///< 右侧边距（像素）
-        int    MarginBottom    = 0;      ///< 底部边距（像素），扩大学形缓冲区高度以容纳字体下降部分（如微软雅黑）
-        int    LineSpacing     = 0;      ///< 行间距（像素），增加行与行之间的额外空白
-        int    GlyphWidth      = 0;      ///< DIB 缓冲区宽度 = MarginLeft + Width + MarginRight
-        bool   DrawShadow      = true;   ///< 是否绘制阴影
-        bool   OriginalAscii   = true;   ///< ASCII 字符（0x20-0x7E）是否使用原版 .fnt 位图字体
-
-        /** @brief 返回有效字形高度（含底部边距） */
-        int EffectiveHeight() const { return Height + MarginBottom; }
-
-        /** @brief 该字符是否走原版 ASCII 位图路径（开关开启且为可打印 ASCII） */
-        bool UsesOriginalAscii(wchar_t ch) const { return OriginalAscii && ch >= 0x20 && ch <= 0x7E; }
-
-        // ---- GDI 渲染资源 ----
-        HDC     hdcGlyph     = nullptr;  ///< 字形渲染内存 DC
-        HBITMAP hbmGlyph     = nullptr;  ///< 字形渲染 32-bit DIB
-        void*   pGlyphBits   = nullptr;  ///< DIB 位图原始数据指针
-        HFONT   hGlyphFont   = nullptr;  ///< GDI 字体句柄
-        HGDIOBJ hOldBitmap   = nullptr;  ///< DIB 选入 DC 前的原位图（释放时恢复）
-        HGDIOBJ hOldFont     = nullptr;  ///< 字体选入 DC 前的原字体（释放时恢复）
-
-        // ---- 字形缓存 ----
-        /// 字形 alpha 缓存：64K 扁平指针表（wchar_t 为 16 位，O(1) 无哈希）
-        mutable std::unique_ptr<std::unique_ptr<GlyphData>[]> glyphCache;
-        /// 字符宽度缓存：64K 扁平表（advance width，含左右边距），0 = 尚未测量
-        mutable std::array<int16_t, 0x10000> widthCache{};
-
-        ExtFont() = default;
-
-        /**
-         * @brief 构造并加载系统字体
-         * @param lpFileName    系统字体名（如 "SimSun", "Microsoft YaHei"）
-         * @param iHeight       字形渲染高度
-         * @param iWidth        字形渲染宽度
-         * @param bBold         是否加粗
-         * @param bAntiAlias    是否启用 ClearType 抗锯齿
-         * @param iMarginLeft   左边距
-         * @param iMarginRight  右边距
-         * @param iMarginBottom 底部边距（扩大学形缓冲区，用于容纳字体下降部分）
-         * @param iLineSpacing  行间距（增加行与行之间的额外空白）
-         * @param bDrawShadow   是否绘制阴影
-         * @param bOriginalAscii ASCII 字符是否使用原版 .fnt 位图字体
-         */
-        ExtFont(LPCSTR lpFileName, int iHeight, int iWidth, bool bBold, bool bAntiAlias,
-            int iMarginLeft, int iMarginRight, int iMarginBottom, int iLineSpacing, bool bDrawShadow,
-            bool bOriginalAscii);
-
-        /** @brief 释放 GDI 资源和字形缓存 */
-        ~ExtFont();
-
-        // 禁止拷贝（GDI 句柄不可浅拷贝），允许移动
-        ExtFont(const ExtFont&) = delete;
-        ExtFont& operator=(const ExtFont&) = delete;
-        ExtFont(ExtFont&& other) noexcept;
-        ExtFont& operator=(ExtFont&& other) noexcept;
-
-        /**
-         * @brief 通过 GDI 加载系统字体
-         * @param fontName     系统字体名（如 "SimSun", "Microsoft YaHei"）
-         * @param iHeight      字形渲染高度
-         * @param iWidth       字形渲染宽度
-         * @param bBold        是否加粗
-         * @param bAntiAlias   是否启用 ClearType
-         * @param iMarginLeft  左边距
-         * @param iMarginRight 右边距
-         * @param iMarginBottom 底部边距
-         * @param iLineSpacing 行间距
-         * @param bDrawShadow  是否绘制阴影
-         * @param bOriginalAscii ASCII 字符是否使用原版 .fnt 位图字体
-         * @return 加载成功返回 true，任一 GDI 资源创建失败返回 false
-         */
-        bool __fastcall LoadGdiFont(const char* fontName, int iHeight, int iWidth, bool bBold, bool bAntiAlias,
-            int iMarginLeft, int iMarginRight, int iMarginBottom, int iLineSpacing, bool bDrawShadow,
-            bool bOriginalAscii);
-
-        /**
-         * @brief GBK 区码/位码 → wchar_t 转换（带全局查表缓存，避免重复调用 MultiByteToWideChar）
-         */
-        static wchar_t GbkToWchar(uint8_t section, uint8_t position);
-
-        /**
-         * @brief 判断字符是否在 GBK 可表示范围（非 GBK 字符 → 跳过以避方块）
-         */
-        static bool IsGbkChar(wchar_t wch);
-
-        /**
-         * @brief 获取字形的抗锯齿 alpha 掩膜（按需 GDI 渲染 + 缓存）
-         * @return GlyphWidth×EffectiveHeight 字节 alpha 数据指针，失败返回 nullptr
-         */
-        const uint8_t* GetGlyphAlpha(wchar_t ch) const;
-
-        /**
-         * @brief 获取单个字符的 GDI 渲染像素宽度（advance width，含左右边距）
-         * @note 首次调用时通过 GetTextExtentPoint32W 测量并缓存
-         */
-        int GetCharWidth(wchar_t ch) const;
-
-    private:
-        /** @brief 释放全部 GDI 资源（先恢复原对象再删除，避免句柄泄漏） */
-        void ReleaseGdiResources();
-    };
-
-    /**
      * @brief 扩展后的游戏字体结构体（比原始 font 多 8 字节）
      *
      * 通过修改游戏内存分配大小实现，额外字段存储原始高度和扩展字库指针。
@@ -227,9 +92,10 @@ namespace H3FontExtension
      */
     struct CleanLine
     {
-        std::string text;              ///< 纯可见字符（无颜色码、无控制字符）
-        int         lineWidth;         ///< 该行可见字符的总像素宽度
-        std::vector<ColorStop> stops;  ///< 按 bytePos 升序排列的颜色变更点
+        std::string text;               ///< 纯可见字符（无颜色码、无控制字符）
+        int         lineWidth;          ///< 该行可见字符的总像素宽度
+        std::vector<ColorStop> stops;   ///< 按 bytePos 升序排列的颜色变更点
+        std::vector<uint16_t> advances; ///< 每个可见字符的步进宽度（布局阶段预计算，绘制期零测量）
     };
 
     // ============================================================

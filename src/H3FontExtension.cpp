@@ -53,370 +53,6 @@ namespace H3FontExtension
      */
     constexpr uintptr_t GameBitDepthAddress = 0x5FA22B;
 
-    /**
-     * @brief GBK 双字节 → wchar_t 全局查表缓存
-     *
-     * 索引为 (区码 << 8) | 位码，0 表示尚未转换。
-     * 拆行、测量、绘制阶段反复查询同一字符时避免重复调用 MultiByteToWideChar。
-     */
-    static wchar_t g_GbkWideTable[0x10000];
-
-    /**
-     * @brief wchar_t → 是否 GBK 可表示 全局查表（0 = 不可表示）
-     *
-     * 初始化时对 GBK 全码位（0x8140-0xFEFE，约 2.4 万）做一次
-     * MultiByteToWideChar 扫描，得到精确的 GBK 可表示字符集。
-     * 绘制阶段 O(1) 查表替代原来 15 连比较的区间判断。
-     */
-    static uint8_t g_IsGbkCharTable[0x10000];
-
-    /** @brief 初始化 GBK 字符集查表（Init 时调用一次） */
-    static void InitGbkTables()
-    {
-        memset(g_IsGbkCharTable, 0, sizeof(g_IsGbkCharTable));
-
-        // GBK 单字节区：ASCII 可打印字符
-        for (int c = 0x20; c <= 0x7E; ++c)
-            g_IsGbkCharTable[c] = 1;
-
-        // GBK 双字节区全扫描
-        char gbk[2];
-        for (int section = DBCS_SECTION; section <= 0xFE; ++section)
-        {
-            for (int position = DBCS_POSITION; position <= 0xFE; ++position)
-            {
-                if (position == 0x7F)
-                    continue;
-                gbk[0] = static_cast<char>(section);
-                gbk[1] = static_cast<char>(position);
-                wchar_t wch = 0;
-                if (MultiByteToWideChar(936, 0, gbk, 2, &wch, 1) == 1)
-                    g_IsGbkCharTable[wch] = 1;
-            }
-        }
-    }
-
-    // ============================================================
-    // Section 1: ExtFont 实现
-    // ============================================================
-
-    /** @brief 构造函数：统一加载 GDI 系统字体 */
-    ExtFont::ExtFont(LPCSTR lpFileName, int iHeight, int iWidth, bool bBold, bool bAntiAlias,
-        int iMarginLeft, int iMarginRight, int iMarginBottom, int iLineSpacing, bool bDrawShadow,
-        bool bOriginalAscii)
-    {
-        LoadGdiFont(lpFileName, iHeight, iWidth, bBold, bAntiAlias,
-            iMarginLeft, iMarginRight, iMarginBottom, iLineSpacing, bDrawShadow, bOriginalAscii);
-    }
-
-    /** @brief 释放 GDI 资源（先恢复原对象再删除，避免句柄泄漏） */
-    void ExtFont::ReleaseGdiResources()
-    {
-        if (hdcGlyph)
-        {
-            // 选入 DC 的对象必须先恢复原对象才能成功删除，否则 DeleteObject 静默失败导致 GDI 句柄泄漏
-            if (hGlyphFont)
-            {
-                if (hOldFont)
-                    SelectObject(hdcGlyph, hOldFont);
-                DeleteObject(hGlyphFont);
-                hGlyphFont = nullptr;
-                hOldFont = nullptr;
-            }
-            if (hbmGlyph)
-            {
-                if (hOldBitmap)
-                    SelectObject(hdcGlyph, hOldBitmap);
-                DeleteObject(hbmGlyph);
-                hbmGlyph = nullptr;
-                hOldBitmap = nullptr;
-                pGlyphBits = nullptr;
-            }
-            DeleteDC(hdcGlyph);
-            hdcGlyph = nullptr;
-        }
-        else
-        {
-            // DC 不存在（创建失败或已释放）：直接删除可能残留的独立对象
-            if (hGlyphFont)
-            {
-                DeleteObject(hGlyphFont);
-                hGlyphFont = nullptr;
-            }
-            if (hbmGlyph)
-            {
-                DeleteObject(hbmGlyph);
-                hbmGlyph = nullptr;
-                pGlyphBits = nullptr;
-            }
-        }
-    }
-
-    /** @brief 释放 GDI 资源和字形缓存 */
-    ExtFont::~ExtFont()
-    {
-        ReleaseGdiResources();
-    }
-
-    /** @brief 移动构造：转移 GDI 资源所有权 */
-    ExtFont::ExtFont(ExtFont&& other) noexcept
-        : Height(other.Height), Width(other.Width)
-        , Bold(other.Bold), AntiAlias(other.AntiAlias)
-        , MarginLeft(other.MarginLeft), MarginRight(other.MarginRight)
-        , MarginBottom(other.MarginBottom), LineSpacing(other.LineSpacing)
-        , GlyphWidth(other.GlyphWidth)
-        , DrawShadow(other.DrawShadow)
-        , OriginalAscii(other.OriginalAscii)
-        , hdcGlyph(other.hdcGlyph), hbmGlyph(other.hbmGlyph)
-        , pGlyphBits(other.pGlyphBits), hGlyphFont(other.hGlyphFont)
-        , hOldBitmap(other.hOldBitmap), hOldFont(other.hOldFont)
-        , glyphCache(std::move(other.glyphCache))
-        , widthCache(std::move(other.widthCache))
-    {
-        other.hdcGlyph = nullptr;
-        other.hbmGlyph = nullptr;
-        other.pGlyphBits = nullptr;
-        other.hGlyphFont = nullptr;
-        other.hOldBitmap = nullptr;
-        other.hOldFont = nullptr;
-    }
-
-    /** @brief 移动赋值：转移 GDI 资源所有权 */
-    ExtFont& ExtFont::operator=(ExtFont&& other) noexcept
-    {
-        if (this != &other)
-        {
-            ReleaseGdiResources();
-
-            Height = other.Height; Width = other.Width;
-            Bold = other.Bold; AntiAlias = other.AntiAlias;
-            MarginLeft = other.MarginLeft; MarginRight = other.MarginRight;
-            MarginBottom = other.MarginBottom; LineSpacing = other.LineSpacing;
-            GlyphWidth = other.GlyphWidth;
-            DrawShadow = other.DrawShadow;
-            OriginalAscii = other.OriginalAscii;
-            hdcGlyph = other.hdcGlyph; other.hdcGlyph = nullptr;
-            hbmGlyph = other.hbmGlyph; other.hbmGlyph = nullptr;
-            pGlyphBits = other.pGlyphBits; other.pGlyphBits = nullptr;
-            hGlyphFont = other.hGlyphFont; other.hGlyphFont = nullptr;
-            hOldBitmap = other.hOldBitmap; other.hOldBitmap = nullptr;
-            hOldFont = other.hOldFont; other.hOldFont = nullptr;
-            glyphCache = std::move(other.glyphCache);
-            widthCache = std::move(other.widthCache);
-        }
-        return *this;
-    }
-
-    /** @brief 创建 GDI 字形字体（失败返回 nullptr，调用方负责回退/清理） */
-    static HFONT CreateGlyphFont(LPCSTR fontName, int fontHeightPx, int fontWeight, DWORD quality)
-    {
-        return CreateFontA(
-            fontHeightPx,                   // lfHeight（负值 = 字符高度）
-            0,                              // lfWidth（0 = 自适应）
-            0, 0,                           // escapement, orientation
-            fontWeight,                     // fontWeight（FW_BOLD 或 FW_NORMAL）
-            FALSE, FALSE, FALSE,            // italic, underline, strikeout
-            DEFAULT_CHARSET,
-            OUT_DEFAULT_PRECIS,
-            CLIP_DEFAULT_PRECIS,
-            quality,                        // CLEARTYPE_QUALITY 或 NONANTIALIASED_QUALITY
-            DEFAULT_PITCH | FF_DONTCARE,
-            fontName);
-    }
-
-    /**
-     * @brief 通过 GDI 加载系统字体（唯一模式）
-     *
-     * 创建 DIB Section + 兼容 DC + 指定字体，用于运行时渲染单个字形。
-     * 字形和单个字符宽度在首次使用时按需渲染/测量并缓存。
-     */
-    bool __fastcall ExtFont::LoadGdiFont(const char* fontName, int iHeight, int iWidth, bool bBold, bool bAntiAlias,
-        int iMarginLeft, int iMarginRight, int iMarginBottom, int iLineSpacing, bool bDrawShadow,
-        bool bOriginalAscii)
-    {
-        this->Height = iHeight;              // 核心字形高度（不含底部边距）
-        this->Width = iWidth;
-        this->Bold = bBold;
-        this->AntiAlias = bAntiAlias;
-        this->MarginLeft = iMarginLeft;
-        this->MarginRight = iMarginRight;
-        this->MarginBottom = iMarginBottom;  // 额外底部空间（用于容纳字体下降部分）
-        this->LineSpacing = iLineSpacing;    // 额外行间距
-        this->DrawShadow = bDrawShadow;
-        this->OriginalAscii = bOriginalAscii; // ASCII 走原版 .fnt 位图
-        this->GlyphWidth = iMarginLeft + iWidth + iMarginRight;
-
-        // 创建 32-bit DIB section 作为字形渲染目标
-        // 缓冲区高度 = 核心字形高度 + 底部边距（解决微软雅黑等字体下降部分被裁剪的问题）
-        const int bufferHeight = iHeight + iMarginBottom;
-
-        BITMAPINFO bmi = {};
-        bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-        bmi.bmiHeader.biWidth = GlyphWidth;
-        bmi.bmiHeader.biHeight = -bufferHeight; // 负值 = top-down DIB
-        bmi.bmiHeader.biPlanes = 1;
-        bmi.bmiHeader.biBitCount = 32;
-        bmi.bmiHeader.biCompression = BI_RGB;
-
-        HDC hdcScreen = GetDC(nullptr);
-        hdcGlyph = CreateCompatibleDC(hdcScreen);
-        ReleaseDC(nullptr, hdcScreen);
-
-        if (!hdcGlyph)
-        {
-            return false;
-        }
-
-        hbmGlyph = CreateDIBSection(hdcGlyph, &bmi, DIB_RGB_COLORS, &pGlyphBits, nullptr, 0);
-        if (!hbmGlyph)
-        {
-            ReleaseGdiResources(); // 清理已创建的 DC
-            return false;
-        }
-
-        hOldBitmap = SelectObject(hdcGlyph, hbmGlyph);
-        SetBkMode(hdcGlyph, TRANSPARENT);
-        SetTextAlign(hdcGlyph, TA_TOP | TA_LEFT);
-        SetTextColor(hdcGlyph, RGB(255, 255, 255)); // 固定白色绘制，alpha 掩膜提取只需覆盖度
-
-        // 负 lfHeight = 字符高度（像素），不包含行间距
-        const int fontHeightPx = -Height;
-        const int fontWeight = bBold ? FW_BOLD : FW_NORMAL;
-        const DWORD quality = bAntiAlias ? CLEARTYPE_QUALITY : NONANTIALIASED_QUALITY;
-
-        // 尝试从系统名创建字体，失败则回退宋体
-        hGlyphFont = CreateGlyphFont(fontName, fontHeightPx, fontWeight, quality);
-        if (!hGlyphFont)
-            hGlyphFont = CreateGlyphFont("SimSun", fontHeightPx, fontWeight, quality);
-
-        if (!hGlyphFont)
-        {
-            ReleaseGdiResources(); // 清理 DC + DIB
-            return false;
-        }
-
-        hOldFont = SelectObject(hdcGlyph, hGlyphFont);
-
-        // 分配 64K 扁平字形缓存表（未命中槽位为 nullptr，首次使用时按需渲染）
-        glyphCache = std::make_unique<std::unique_ptr<GlyphData>[]>(0x10000);
-
-        // 预缓存常用 ASCII 字形及宽度（原版位图模式下 ASCII 不经 GDI，无需预热）
-        if (!OriginalAscii)
-        {
-            for (wchar_t c = L' '; c <= L'~'; ++c)
-            {
-                GetGlyphAlpha(c);
-                GetCharWidth(c);
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * @brief GBK 区码/位码 → wchar_t（带全局查表缓存）
-     */
-    wchar_t ExtFont::GbkToWchar(uint8_t section, uint8_t position)
-    {
-        wchar_t& cached = g_GbkWideTable[(section << 8) | position];
-        if (cached)
-            return cached;
-
-        char gbk[3] = { (char)section, (char)position, 0 };
-        wchar_t wch = L'?';
-        if (MultiByteToWideChar(936, 0, gbk, 2, &wch, 1) <= 0) // CP936 = GBK
-            wch = L'?';
-        cached = wch;
-        return cached;
-    }
-
-    /**
-     * @brief 判断 wchar_t 是否在 GBK 可表示范围内
-     *
-     * 通过初始化时构建的精确查表判断，O(1) 无 API 调用。
-     * 非 GBK 字符由 GDI 绘制为方块（tofu），提前过滤可避免渲染开销。
-     */
-    bool ExtFont::IsGbkChar(wchar_t wch)
-    {
-        return g_IsGbkCharTable[wch] != 0;
-    }
-
-    /**
-     * @brief 获取字形的抗锯齿 alpha 掩膜（按需 GDI 渲染 + 缓存）
-     *
-     * 渲染流程：
-     *   1. 在内存 DC 上以白色文字绘制单个字符（背景为黑色 DIB）
-     *   2. 读取每个像素的 ClearType 子像素颜色
-     *   3. 取 max(R,G,B) 作为覆盖度（alpha）写入缓存
-     *      （灰度字体下 R=G=B；ClearType 彩边下取最大值可保留边缘覆盖）
-     *
-     * 绘制阶段只消费 alpha（前景色来自调色板），因此不缓存 RGB 分量，
-     * 相比 RGBA 缓存节省 75% 内存并提升混合时的缓存局部性。
-     *
-     * @return GlyphWidth×EffectiveHeight 字节 alpha 数据指针，失败返回 nullptr
-     */
-    const uint8_t* ExtFont::GetGlyphAlpha(wchar_t ch) const
-    {
-        if (!hdcGlyph || !pGlyphBits || !glyphCache)
-            return nullptr;
-
-        // 扁平表直接命中
-        auto& slot = glyphCache[static_cast<uint16_t>(ch)];
-        if (slot)
-            return slot->alpha.data();
-
-        // 按需渲染
-        const int bufW = GlyphWidth;
-        const int bufH = EffectiveHeight(); // 有效缓冲区高度（含底部扩展空间）
-        if (bufW <= 0 || bufH <= 0)
-            return nullptr;
-
-        // 清除背景：top-down DIB 是连续内存，直接 memset，无需创建 GDI 画刷
-        memset(pGlyphBits, 0, static_cast<std::size_t>(bufW) * bufH * 4);
-
-        // 以白色绘制字符（ClearType 会生成彩色子像素）
-        TextOutW(hdcGlyph, MarginLeft, 0, &ch, 1);
-        GdiFlush();
-
-        // 提取 alpha 掩膜：max(R,G,B) 作为覆盖度
-        auto glyph = std::make_unique<GlyphData>();
-        glyph->alpha.resize(static_cast<std::size_t>(bufW) * bufH);
-
-        const uint8_t* src = static_cast<const uint8_t*>(pGlyphBits);
-        for (std::size_t i = 0; i < glyph->alpha.size(); ++i)
-        {
-            const uint8_t b = src[i * 4];
-            const uint8_t g = src[i * 4 + 1];
-            const uint8_t r = src[i * 4 + 2];
-            glyph->alpha[i] = (r > g) ? ((r > b) ? r : b) : ((g > b) ? g : b);
-        }
-
-        slot = std::move(glyph);
-        return slot->alpha.data();
-    }
-
-    /**
-     * @brief 获取单个字符的 GDI 渲染像素宽度（含左右边距）
-     *
-     * 使用 GetTextExtentPoint32W 测量字符在 GDI 字体下的实际宽度，
-     * 结果加上 MarginLeft + MarginRight 并缓存。
-     */
-    int ExtFont::GetCharWidth(wchar_t ch) const
-    {
-        if (!hdcGlyph)
-            return GlyphWidth; // 回退
-
-        const int16_t cached = widthCache[static_cast<uint16_t>(ch)];
-        if (cached != 0)
-            return cached;
-
-        SIZE sz = { 0, 0 };
-        GetTextExtentPoint32W(hdcGlyph, &ch, 1, &sz);
-        const int w = sz.cx + MarginLeft + MarginRight;
-        widthCache[static_cast<uint16_t>(ch)] = static_cast<int16_t>(w);
-        return w;
-    }
-
     // ============================================================
     // Section 2: 渲染后端（色深适配 + 像素混合）
     // ============================================================
@@ -533,7 +169,7 @@ namespace H3FontExtension
             const auto& spacing = pFont->fr.abc[static_cast<uint8_t>(ch)];
             return spacing.abcA + spacing.abcB + spacing.abcC;
         }
-        return pFont->ExtData->GetCharWidth(ch);
+        return pFont->ExtData->GetAdvanceWidth(ch);
     }
 
     /**
@@ -696,18 +332,20 @@ namespace H3FontExtension
      * 剥离所有颜色控制字符 {~...} / { / }，生成纯可见字符序列，
      * 同时将颜色变更信息记录为 ColorStop 列表。
      *
+     * @param pFont          字体（用于测量每个字符的步进宽度）
      * @param src            原始拆行结果（含颜色码）
      * @param defaultColor   默认渲染颜色（当前色深格式）
      * @param highlightColor { } 切换的高亮颜色
      * @param is32bit        当前是否为 32 位色深模式
      * @param dst            [out] 预处理结果
      */
-    static void PreprocessLine(const TextLineStruct& src, DWORD defaultColor, DWORD highlightColor, bool is32bit, CleanLine& dst)
+    static void PreprocessLine(H3FontExt* pFont, const TextLineStruct& src, DWORD defaultColor, DWORD highlightColor, bool is32bit, CleanLine& dst)
     {
         dst.lineWidth = src.lineWidth;
         dst.text.clear();
         dst.stops.clear();
         dst.stops.reserve(4); // 典型行的颜色切换次数很少，避免小规模多次扩容
+        dst.advances.clear();
 
         if (src.lineWidth == 0)
             return;
@@ -717,6 +355,7 @@ namespace H3FontExtension
 
         // 预分配：clean text 最多和 raw 一样长，通常更短
         dst.text.reserve(len);
+        dst.advances.reserve(len);
 
         DWORD curColor = defaultColor;
 
@@ -807,10 +446,12 @@ namespace H3FontExtension
                 continue;
             }
 
-            // ============ 可见字符：拷贝到 clean text ============
+            // ============ 可见字符：拷贝到 clean text（同时预计算步进宽度） ============
             if (IsSingleByte(code))
             {
                 dst.text.push_back(static_cast<char>(code));
+                dst.advances.push_back(static_cast<uint16_t>(
+                    CharWidthPx(pFont, static_cast<wchar_t>(code))));
                 ++i;
             }
             else
@@ -823,6 +464,8 @@ namespace H3FontExtension
                     {
                         dst.text.push_back(raw[i]);
                         dst.text.push_back(raw[i + 1]);
+                        dst.advances.push_back(static_cast<uint16_t>(
+                            CharWidthPx(pFont, ExtFont::GbkToWchar(code, nextCode))));
                         i += 2;
                         continue;
                     }
@@ -1148,7 +791,7 @@ namespace H3FontExtension
         for (const auto& rawLine : scratch)
         {
             slot.lines.emplace_back();
-            PreprocessLine(rawLine, defaultColor, highlightColor, is32bit, slot.lines.back());
+            PreprocessLine(pFont, rawLine, defaultColor, highlightColor, is32bit, slot.lines.back());
         }
         return slot.lines;
     }
@@ -1424,7 +1067,7 @@ namespace H3FontExtension
                         curX, glyphY((wchar_t)code), curColor, shadowColor);
                     if (cursorPos == charIdx)
                         H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, glyphY(L'_'), defaultColor, shadowColor);
-                    curX += CharWidthPx(pFont, (wchar_t)code);
+                    curX += line.advances[charIdx]; // 布局阶段预计算，绘制期零测量
                     ++p;
                     ++charIdx;
                 }
@@ -1438,7 +1081,7 @@ namespace H3FontExtension
                             curX, glyphY(wch), curColor, shadowColor);
                         if (cursorPos == charIdx)
                             H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, glyphY(L'_'), defaultColor, shadowColor);
-                        curX += CharWidthPx(pFont, wch);
+                        curX += line.advances[charIdx]; // 布局阶段预计算，绘制期零测量
                         p += 2;
                         ++charIdx;
                     }
@@ -1449,7 +1092,7 @@ namespace H3FontExtension
                             curX, glyphY((wchar_t)code), curColor, shadowColor);
                         if (cursorPos == charIdx)
                             H3Font_DrawChar<Is32>(pFont, pPcx, L'_', curX, glyphY(L'_'), defaultColor, shadowColor);
-                        curX += CharWidthPx(pFont, (wchar_t)code);
+                        curX += line.advances[charIdx]; // 布局阶段预计算，绘制期零测量
                         ++p;
                         ++charIdx;
                     }
@@ -1482,7 +1125,7 @@ namespace H3FontExtension
      * @param uAlignFlags 对齐标志（font::EJustify 位掩码）
      * @param iFontStyle  输入光标位置（可见字符索引，-1 = 无光标）
      */
-    static void __stdcall H3Font_DrawText(HiHook* h, H3FontExt* pFont, char* szText, Bitmap16Bit* pPcx,
+    static void __stdcall H3Font_DrawText(HiHook* /*h*/, H3FontExt* pFont, char* szText, Bitmap16Bit* pPcx,
         int iX, int iY, int iBoxWidth, int iBoxHeight,
         uint32_t uColorIdx, uint32_t uAlignFlags, int iFontStyle)
     {
@@ -1579,12 +1222,54 @@ namespace H3FontExtension
     // 签名与原始函数一致（__stdcall，首个参数为 HiHook*），
     // 内部使用 H3FontExt 扩展字体实现中文支持。
 
+    // ---- 测量结果缓存 ----
+    // 输入框绘制、对话框尺寸计算会频繁调用测量类 Hook；
+    // 文本不变时直接复用结果，避免重复遍历解析。
+
+    /** @brief 测量缓存条目 */
+    struct MeasureCacheEntry
+    {
+        uint64_t hash = 0;             ///< 文本 FNV-1a 哈希（0 = 空槽位）
+        std::string text;              ///< 原始文本（精确比较，防哈希碰撞误命中）
+        const ExtFont* font = nullptr; ///< 创建时的扩展字库
+        int boxWidth = 0;              ///< 拆行宽度（不涉及的测量恒为 0）
+        int value = 0;                 ///< 测量结果
+    };
+
+    static constexpr std::size_t MeasureCacheSize = 64;
+
+    /**
+     * @brief 带缓存的测量入口（直接映射缓存，键 = 文本 + 字体 + 宽度）
+     */
+    template <typename ComputeFunc>
+    static int CachedMeasure(MeasureCacheEntry(&cache)[MeasureCacheSize],
+        H3FontExt* pFont, const char* text, int boxWidth, ComputeFunc&& compute)
+    {
+        const uint64_t hash = Fnv1aHash(text);
+        MeasureCacheEntry& slot = cache[hash % MeasureCacheSize];
+
+        if (slot.hash == hash
+            && slot.font == pFont->ExtData
+            && slot.boxWidth == boxWidth
+            && slot.text == text)
+        {
+            return slot.value;
+        }
+
+        slot.hash = hash;
+        slot.text = text;
+        slot.font = pFont->ExtData;
+        slot.boxWidth = boxWidth;
+        slot.value = compute();
+        return slot.value;
+    }
+
     /**
      * @brief Hook: 将文本拆分为多行（返回 exe_vector<exe_string>）
      *
      * 替换游戏原始的文本拆分逻辑，支持双字节字符和颜色码。
      */
-    static void __stdcall H3Font_SplitTextIntoLines(HiHook* h, H3FontExt* pFont, char* szText, const int iBoxWidth,
+    static void __stdcall H3Font_SplitTextIntoLines(HiHook* /*h*/, H3FontExt* pFont, char* szText, const int iBoxWidth,
         exe_vector<exe_string>& lines)
     {
         lines.clear();
@@ -1608,33 +1293,37 @@ namespace H3FontExtension
      * 用于消息框等需要根据内容自适应宽度的场景。
      * 结果受 BoxWidthMin / BoxWidthMax 约束。
      */
-    static int __stdcall H3Font_GetWordWidth(HiHook* h, H3FontExt* pFont, char* szText)
+    static int __stdcall H3Font_GetWordWidth(HiHook* /*h*/, H3FontExt* pFont, char* szText)
     {
         if (!szText || !*szText || !pFont->ExtData)
             return 0;
 
-        int maxWidth = 0;
-        int wordWidth = 0;
+        static MeasureCacheEntry cache[MeasureCacheSize];
+        return CachedMeasure(cache, pFont, szText, 0, [&]()
+        {
+            int maxWidth = 0;
+            int wordWidth = 0;
 
-        ForEachVisibleChar(pFont, szText,
-            [&](TokenType type, int width, int /*bytes*/)
-            {
-                if (type == TokenType::Newline || type == TokenType::Space || type == TokenType::DoubleByte)
+            ForEachVisibleChar(pFont, szText,
+                [&](TokenType type, int width, int /*bytes*/)
                 {
-                    if (wordWidth > maxWidth)
-                        maxWidth = wordWidth;
-                    wordWidth = 0;
-                }
-                else
-                {
-                    wordWidth += width;
-                }
-                return true;
-            });
+                    if (type == TokenType::Newline || type == TokenType::Space || type == TokenType::DoubleByte)
+                    {
+                        if (wordWidth > maxWidth)
+                            maxWidth = wordWidth;
+                        wordWidth = 0;
+                    }
+                    else
+                    {
+                        wordWidth += width;
+                    }
+                    return true;
+                });
 
-        if (wordWidth > maxWidth)
-            maxWidth = wordWidth;
-        return std::clamp(maxWidth, BoxWidthMin, BoxWidthMax);
+            if (wordWidth > maxWidth)
+                maxWidth = wordWidth;
+            return std::clamp(maxWidth, BoxWidthMin, BoxWidthMax);
+        });
     }
 
     /**
@@ -1642,73 +1331,81 @@ namespace H3FontExtension
      *
      * 模拟换行行为，返回所有行中最宽一行的像素宽度。
      */
-    static int __stdcall H3Font_GetLineWrapWidth(HiHook* h, H3FontExt* pFont, char* szText, int iBoxWidth)
+    static int __stdcall H3Font_GetLineWrapWidth(HiHook* /*h*/, H3FontExt* pFont, char* szText, int iBoxWidth)
     {
         if (!szText || !*szText || !pFont->ExtData)
             return 0;
 
-        int maxWidth = 0;
-        int lineWidth = 0;
+        static MeasureCacheEntry cache[MeasureCacheSize];
+        return CachedMeasure(cache, pFont, szText, iBoxWidth, [&]()
+        {
+            int maxWidth = 0;
+            int lineWidth = 0;
 
-        ForEachVisibleChar(pFont, szText,
-            [&](TokenType type, int width, int /*bytes*/)
-            {
-                if (type == TokenType::Newline)
+            ForEachVisibleChar(pFont, szText,
+                [&](TokenType type, int width, int /*bytes*/)
                 {
-                    if (lineWidth > maxWidth)
-                        maxWidth = lineWidth;
-                    lineWidth = 0;
-                }
-                else
-                {
-                    if (lineWidth + width > iBoxWidth)
+                    if (type == TokenType::Newline)
                     {
                         if (lineWidth > maxWidth)
                             maxWidth = lineWidth;
                         lineWidth = 0;
                     }
-                    lineWidth += width;
-                }
-                return true;
-            });
+                    else
+                    {
+                        if (lineWidth + width > iBoxWidth)
+                        {
+                            if (lineWidth > maxWidth)
+                                maxWidth = lineWidth;
+                            lineWidth = 0;
+                        }
+                        lineWidth += width;
+                    }
+                    return true;
+                });
 
-        if (lineWidth > maxWidth)
-            maxWidth = lineWidth;
-        return maxWidth;
+            if (lineWidth > maxWidth)
+                maxWidth = lineWidth;
+            return maxWidth;
+        });
     }
 
     /**
      * @brief Hook: 计算文本在指定宽度下的总行数
      */
-    static int __stdcall H3Font_GetLineCount(HiHook* h, H3FontExt* pFont, char* szText, int iBoxWidth)
+    static int __stdcall H3Font_GetLineCount(HiHook* /*h*/, H3FontExt* pFont, char* szText, int iBoxWidth)
     {
         if (!szText || !*szText || !pFont->ExtData)
             return 0;
 
-        int lineCount = 1;
-        int lineWidth = 0;
+        static MeasureCacheEntry cache[MeasureCacheSize];
+        return CachedMeasure(cache, pFont, szText, iBoxWidth, [&]()
+        {
+            int lineCount = 1;
+            int lineWidth = 0;
 
-        ForEachVisibleChar(pFont, szText,
-            [&](TokenType type, int width, int /*bytes*/)
-            {
-                if (type == TokenType::Newline)
+            ForEachVisibleChar(pFont, szText,
+                [&](TokenType type, int width, int /*bytes*/)
                 {
-                    ++lineCount;
-                    lineWidth = 0;
-                }
-                else
-                {
-                    if (lineWidth + width > iBoxWidth)
+                    if (type == TokenType::Newline)
                     {
                         ++lineCount;
-                        lineWidth = 0; // 当前字符归入新行
+                        lineWidth = 0;
                     }
-                    lineWidth += width;
-                }
-                return true;
-            });
+                    else
+                    {
+                        if (lineWidth + width > iBoxWidth)
+                        {
+                            ++lineCount;
+                            lineWidth = 0; // 当前字符归入新行
+                        }
+                        lineWidth += width;
+                    }
+                    return true;
+                });
 
-        return lineCount;
+            return lineCount;
+        });
     }
 
     /**
@@ -1718,53 +1415,61 @@ namespace H3FontExtension
      * 该函数被消息框特殊文本宽度计算（DoNormalDialog）、文本输入框
      * 裁剪/滚动偏移（textEntryWidget）等使用，替换后中文字符宽度准确。
      */
-    static int __stdcall H3Font_LineWidth(HiHook* h, H3FontExt* pFont, char* szText)
+    static int __stdcall H3Font_LineWidth(HiHook* /*h*/, H3FontExt* pFont, char* szText)
     {
         if (!szText || !*szText || !pFont->ExtData)
             return 0;
 
-        int lineWidth = 0;
-        ForEachVisibleChar(pFont, szText,
-            [&](TokenType type, int width, int /*bytes*/)
-            {
-                if (type == TokenType::Newline)
-                    return false;
-                lineWidth += width;
-                return true;
-            });
-        return lineWidth;
+        static MeasureCacheEntry cache[MeasureCacheSize];
+        return CachedMeasure(cache, pFont, szText, 0, [&]()
+        {
+            int lineWidth = 0;
+            ForEachVisibleChar(pFont, szText,
+                [&](TokenType type, int width, int /*bytes*/)
+                {
+                    if (type == TokenType::Newline)
+                        return false;
+                    lineWidth += width;
+                    return true;
+                });
+            return lineWidth;
+        });
     }
 
     /**
      * @brief Hook: 计算文本中最长行的像素宽度（不换行）
      */
-    static int __stdcall H3Font_GetLineWidth(HiHook* h, H3FontExt* pFont, char* szText)
+    static int __stdcall H3Font_GetLineWidth(HiHook* /*h*/, H3FontExt* pFont, char* szText)
     {
         if (!szText || !*szText || !pFont->ExtData)
             return 0;
 
-        int maxWidth = 0;
-        int lineWidth = 0;
+        static MeasureCacheEntry cache[MeasureCacheSize];
+        return CachedMeasure(cache, pFont, szText, 0, [&]()
+        {
+            int maxWidth = 0;
+            int lineWidth = 0;
 
-        ForEachVisibleChar(pFont, szText,
-            [&](TokenType type, int width, int /*bytes*/)
-            {
-                if (type == TokenType::Newline)
+            ForEachVisibleChar(pFont, szText,
+                [&](TokenType type, int width, int /*bytes*/)
                 {
-                    if (lineWidth > maxWidth)
-                        maxWidth = lineWidth;
-                    lineWidth = 0;
-                }
-                else
-                {
-                    lineWidth += width;
-                }
-                return true;
-            });
+                    if (type == TokenType::Newline)
+                    {
+                        if (lineWidth > maxWidth)
+                            maxWidth = lineWidth;
+                        lineWidth = 0;
+                    }
+                    else
+                    {
+                        lineWidth += width;
+                    }
+                    return true;
+                });
 
-        if (lineWidth > maxWidth)
-            maxWidth = lineWidth;
-        return maxWidth;
+            if (lineWidth > maxWidth)
+                maxWidth = lineWidth;
+            return maxWidth;
+        });
     }
 
     // ============================================================
@@ -1851,7 +1556,7 @@ namespace H3FontExtension
 #endif
 
         // ---------- 初始化 GBK 查表 ----------
-        InitGbkTables();
+        ExtFont::InitGbkTables();
 
         // ---------- 获取 Patcher 实例 ----------
         _P = GetPatcher();
