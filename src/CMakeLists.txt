@@ -38,9 +38,26 @@ target_link_libraries(H3CN PRIVATE
     tomlplusplus::tomlplusplus
 )
 
+# Windows XP 兼容：VC-LTL（系统 msvcrt.dll CRT）+ YY-Thunks（新 API 的 XP 实现）
+# 说明：不降低 WINVER/_WIN32_WINNT——YY-Thunks 的用途即为"新 SDK 编译、旧系统运行"，
+# 降低 SDK 版本宏反而会裁掉 DirectWrite 等头文件声明
+if(H3CN_TARGET_XP)
+    target_link_libraries(H3CN PRIVATE VC_LTL "${H3CN_YY_THUNKS_OBJ}")
+    target_compile_options(H3CN PRIVATE /Zc:threadSafeInit-) # 避免静态局部初始化依赖 Vista+ API
+    target_link_options(H3CN PRIVATE
+        "/ENTRY:DllMainCRTStartupForYY_Thunks" # YY-Thunks 的 DLL 启动包装（thread_local 析构支持）
+        "/SUBSYSTEM:WINDOWS,5.01"              # 最低系统版本：Windows XP x86
+    )
+endif()
+
+# 运行库：静态 CRT（/MT、/MTd）。
+# XP 模式下 VC-LTL 会将静态 CRT 的实现替换为基于系统 msvcrt.dll 的版本，
+# STL 保持静态链接（不引入 MSVCP140.dll 依赖，XP 上可用）
+set(H3CN_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
 set_target_properties(H3CN PROPERTIES
     OUTPUT_NAME H3CN
-    MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+    MSVC_RUNTIME_LIBRARY "${H3CN_RUNTIME_LIBRARY}"
 )
 
 # 全程序优化（对应原 vcxproj 的 Release WholeProgramOptimization）

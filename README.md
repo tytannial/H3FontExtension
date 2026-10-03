@@ -43,6 +43,14 @@ cmake --preset vs2026-x86 -DH3_PATH="D:/Games/HoMM3"
 
 也可用 `-DFETCHCONTENT_SOURCE_DIR_NH3API=<路径>` 指向任意本地NH3API源码目录。
 
+## Windows XP 兼容
+
+默认构建产物兼容 Windows XP（SP3 x86）：通过 [VC-LTL](https://github.com/Chuyu-Team/VC-LTL5)（CRT 统一链接系统msvcrt.dll）与 [YY-Thunks](https://github.com/Chuyu-Team/YY-Thunks)（新SDK API的XP实现）实现，依赖由CMake自动下载并固定版本（VC-LTL v5.3.1、YY-Thunks v1.2.1）。
+
+- 首次配置需联网下载依赖（约25MB）；离线或复用本地副本可指定 `-DH3CN_VC_LTL_DIR=<目录>` / `-DH3CN_YY_THUNKS_DIR=<目录>`
+- 构建产物仅依赖 `KERNEL32/USER32/GDI32/msvcrt.dll`（与原始版本一致）
+- 如仅需现代系统构建可关闭：`-DH3CN_TARGET_XP=OFF`
+
 # 待实现内容
 1. 拥有图形界面的字体生成配置工具。
 2. 自定义字体行间距。

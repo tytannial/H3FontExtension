@@ -26,6 +26,20 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(H3_PATH "" CACHE PATH "HoMM3 游戏目录（可选，用于构建后自动部署）")
 
 # ============================================================
+# Windows XP 兼容（VC-LTL + YY-Thunks）
+#
+# 默认开启：产出兼容 Windows XP SP3 的二进制（通过 YY-Thunks 提供
+# 新 SDK API 的 XP 实现，VC-LTL 链接系统 msvcrt.dll）。
+# ============================================================
+option(H3CN_TARGET_XP "构建兼容 Windows XP 的二进制（VC-LTL + YY-Thunks）" ON)
+set(H3CN_VC_LTL_DIR "" CACHE PATH "本地 VC-LTL 目录（含 _msvcrt.h）；留空自动下载 v5.3.1")
+set(H3CN_YY_THUNKS_DIR "" CACHE PATH "本地 YY-Thunks 解压目录（含 build/native/objs）；留空自动下载 1.2.1")
+
+if(H3CN_TARGET_XP)
+    include(cmake/WindowsXP.cmake)
+endif()
+
+# ============================================================
 # 第三方依赖（CMake FetchContent）
 #
 # 离线/本地开发：
@@ -56,6 +70,3 @@ FetchContent_MakeAvailable(NH3API tomlplusplus)
 # 目标
 # ============================================================
 add_subdirectory(src)
-
-# TODO(后续): YY-Thunks + VC-LTL5 集成（Windows XP 兼容），
-# 通过 option(H3CN_TARGET_XP OFF) 开关引入，本次暂不启用。
