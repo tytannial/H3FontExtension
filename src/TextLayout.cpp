@@ -10,7 +10,6 @@
 #include "TextLayoutCore.h"
 
 #include <algorithm>
-#include <charconv>
 #include <unordered_map>
 #include <utility>
 
@@ -52,10 +51,36 @@ namespace H3FontExtension
         return palette.Palette[colorIdx];
     }
 
-    /** @brief 32 位色深：从调色板获取颜色（HD Mod 32 位调色板指针布局） */
+    /** @brief RGB565 → RGB888 扩位（32 位色深下回退取色用） */
+    static inline DWORD rgb565ToRgb888(WORD c)
+    {
+        const DWORD r = (c >> 11) & 0x1F;
+        const DWORD g = (c >> 5) & 0x3F;
+        const DWORD b = c & 0x1F;
+        return ((r << 3 | r >> 2) << 16) | ((g << 2 | g >> 4) << 8) | (b << 3 | b >> 2);
+    }
+
+    /**
+     * @brief 32 位色深：从 HD Mod 32 位调色板获取颜色
+     *
+     * 注意：字体结构缓存的调色板指针（pFont->p16）可能仍指向 16 位调色板对象。
+     * ERA/WoG 在 HD Mod 替换全局调色板之前加载字体，此时该对象的 +0x218 处是
+     * 调色板最后两个颜色（RGB565 数据），而 HD::Palette 会把它当 pal32 指针
+     * 解引用（如 0xFFFF07FF），导致访问违规（ERA 环境下实测崩溃）。
+     *
+     * 因此优先使用全局 32 位调色板；两个候选对象都不具备 HD 32 位资源类型时，
+     * 回退到 16 位取色并扩位到 RGB888，保证 32 位渲染路径下颜色格式正确。
+     */
     static DWORD __fastcall getColor32(const TPalette16& palette, int colorIdx)
     {
-        return reinterpret_cast<const HD::Palette&>(palette).data32()[colorIdx];
+        const TPalette16* src = (gGamePalette != nullptr && isHDMod32Bit(gGamePalette))
+            ? gGamePalette
+            : &palette;
+
+        if (isHDMod32Bit(src))
+            return reinterpret_cast<const HD::Palette*>(src)->data32()[colorIdx];
+
+        return rgb565ToRgb888(palette.Palette[colorIdx]);
     }
 
     /** @brief 色深自适应：获取调色板颜色的函数指针（默认 16 位，DDraw 初始化后更新） */
@@ -92,6 +117,11 @@ namespace H3FontExtension
     /**
      * @brief 布局核心的生产颜色解析实现（绑定命名颜色表与当前色深）
      *
+     * 支持的颜色码：
+     *   - 命名颜色（{~Red}，大小写不敏感，查 H3CN.toml 的 [TextColor] 表）
+     *   - 十六进制（{~#RRGGBB} / {~RRGGBB} / {~RRGGBBAA}，可省略 #）
+     *   - EML 复合标签（{~text color=Red align=center}，提取 color 属性）
+     *
      * @param code     颜色码文本（{~ 与 } 之间的内容）
      * @param fallback 未命中时的回退颜色（默认色）
      * @param is32bit  是否 32 位色深（决定是否做 888→565 转换）
@@ -103,16 +133,30 @@ namespace H3FontExtension
             if (len == 0)
                 return fallback;
 
-            if (code[0] == '#')
+            // EML 复合标签 {~text color=X align=Y}：提取 color 属性值后按普通颜色码解析
+            if (isEmlTextTag(code, len))
             {
-                DWORD c = 0;
-                const auto [_, ec] = std::from_chars(code + 1, code + len, c, 16);
-                return (ec == std::errc())
-                    ? (is32bit ? c : static_cast<DWORD>(rgb888ToRgb565(c)))
-                    : fallback;
+                const char* value = nullptr;
+                std::size_t valueLen = 0;
+                if (!findEmlAttr(code + 4, len - 4, "color", 5, value, valueLen))
+                    return fallback;
+                return resolveValue(value, valueLen, fallback, is32bit);
             }
 
-            const auto it = gTextColorMap.find(std::string(code, len));
+            return resolveValue(code, len, fallback, is32bit);
+        }
+
+        /** @brief 解析颜色值：十六进制（6/8 位，可带 #）或命名颜色（大小写不敏感） */
+        DWORD resolveValue(const char* code, std::size_t len, DWORD fallback, bool is32bit) const
+        {
+            DWORD rgb = 0;
+            if (parseHexColorCode(code, len, rgb))
+                return is32bit ? rgb : static_cast<DWORD>(rgb888ToRgb565(rgb));
+
+            std::string name(code, len);
+            for (char& c : name)
+                c = asciiToLower(c);
+            const auto it = gTextColorMap.find(name);
             if (it == gTextColorMap.end())
                 return fallback;
             return is32bit ? it->second.rgb888 : it->second.rgb565;
@@ -179,15 +223,22 @@ namespace H3FontExtension
      */
     void updateBitMode()
     {
-        const bool is32 = (gGamePalette != nullptr && isHDMod32Bit()) ||
-            (*reinterpret_cast<const uint8_t*>(GameBitDepthAddress) == 4);
+        const TPalette16* pal = gGamePalette;
+        const bool hd32 = (pal != nullptr) && isHDMod32Bit(pal);
+        const uint8_t depthFlag = *reinterpret_cast<const uint8_t*>(GameBitDepthAddress);
+        const bool is32 = hd32 || (depthFlag == 4);
         const int newMode = is32 ? 1 : 0;
         if (gBitMode != newMode)
         {
             gBitMode = newMode;
             gGetColor = is32 ? getColor32 : getColor16;
             clearLayoutCache();
-            logInfo("色深模式：%s", is32 ? "32 位" : "16 位");
+            logInfo("色深模式：%s（全局调色板 0x%08X，resType=%d，HD32=%d，位深标志=%u）",
+                is32 ? "32 位" : "16 位",
+                static_cast<unsigned>(reinterpret_cast<uintptr_t>(pal)),
+                pal ? static_cast<int>(pal->resType) : -1,
+                hd32 ? 1 : 0,
+                static_cast<unsigned>(depthFlag));
         }
     }
 

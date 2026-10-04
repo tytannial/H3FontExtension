@@ -6,6 +6,8 @@
 
 #include "H3FontExtensionInternal.h"
 
+#include "Log.h"
+
 #include <cstring>
 
 namespace H3FontExtension
@@ -441,6 +443,16 @@ namespace H3FontExtension
         if (!szText || iBoxWidth == 0 || !pPcx || !pFont->ext_data)
             return;
 
+        // 首次绘制时机：安装与 ERA Rainbow 重叠的测量 Hook（位于其链外层）
+        installMeasureHooks();
+
+        // 动态弹出框适配：恢复 wogcn 固定的对话框宽度计算（幂等，低开销）
+        restoreDynamicDialogWidth();
+
+        // ERA 共存适配：绘制路径兜底检测 Hook 覆盖
+        // （旧版 ERA Rainbow 安装时机可能晚于 DDraw 初始化，见 H3FontExtension.cpp）
+        detectHookOverwrites();
+
         // 绘制前重新判定色深：此时 HD Mod 已完全初始化，判定最可靠，
         // 且能感知运行中的色深切换
         updateBitMode();
@@ -482,6 +494,72 @@ namespace H3FontExtension
             getOrCreateLayout(pFont, szText, iBoxWidth, default_color, highlight_color, is32bit);
         if (textLines.empty())
             return;
+
+        // 诊断日志：按字体去重，每个字体记录前 8 次绘制（默认色/标签解析/文本片段），
+        // 用于 ERA 环境颜色问题定位
+        {
+            struct DrawDiagEntry
+            {
+                uintptr_t p16Addr;
+                int count;
+            };
+            static DrawDiagEntry diag[16] = {};
+            static int diagFonts = 0;
+
+            const uintptr_t palAddr = reinterpret_cast<uintptr_t>(&pFont->p16);
+            int slot = -1;
+            for (int k = 0; k < diagFonts; ++k)
+            {
+                if (diag[k].p16Addr == palAddr)
+                {
+                    slot = k;
+                    break;
+                }
+            }
+            if (slot < 0 && diagFonts < 16)
+            {
+                slot = diagFonts++;
+                diag[slot].p16Addr = palAddr;
+                diag[slot].count = 0;
+            }
+
+            if (slot >= 0 && diag[slot].count < 8)
+            {
+                ++diag[slot].count;
+
+                // 文本前 24 字节转 HEX（GBK 安全，不做字符解析）
+                char snippet[49];
+                int n = 0;
+                for (; n < 24 && szText[n]; ++n)
+                {
+                    const unsigned char c = static_cast<unsigned char>(szText[n]);
+                    snippet[n * 2] = "0123456789ABCDEF"[c >> 4];
+                    snippet[n * 2 + 1] = "0123456789ABCDEF"[c & 0xF];
+                }
+                snippet[n * 2] = '\0';
+
+                // 首行首个颜色标签的解析结果（stops 仅在文本含颜色标签时非空）
+                unsigned tagPos = 0;
+                unsigned tagColor = 0;
+                unsigned tagCount = 0;
+                if (!textLines[0].stops.empty())
+                {
+                    tagCount = static_cast<unsigned>(textLines[0].stops.size());
+                    tagPos = static_cast<unsigned>(textLines[0].stops[0].byte_pos);
+                    tagColor = static_cast<unsigned>(textLines[0].stops[0].color);
+                }
+
+                logInfo("绘制诊断[字体%d #%d]：idx=0x%X ci=%d def=0x%08X hi=0x%08X shadow=0x%08X "
+                    "resType=%d c[13]=0x%04X c[255]=0x%04X mode=%d tag0=(%u,0x%08X,n%u) text=%s",
+                    slot, diag[slot].count, static_cast<unsigned>(uColorIdx), static_cast<int>(ci),
+                    static_cast<unsigned>(default_color), static_cast<unsigned>(highlight_color),
+                    static_cast<unsigned>(shadowColor),
+                    static_cast<int>(pFont->p16.resType),
+                    static_cast<unsigned>(pFont->p16.Palette[13]),
+                    static_cast<unsigned>(pFont->p16.Palette[255]),
+                    gBitMode, tagPos, tagColor, tagCount, snippet);
+            }
+        }
 
         const int lineCount = static_cast<int>(textLines.size());
 

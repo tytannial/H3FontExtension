@@ -44,6 +44,31 @@ namespace H3FontExtension
     void updateBitMode();
 
     /**
+     * @brief 检测文本 Hook 是否被外部覆盖（ERA 共存适配；定义于 H3FontExtension.cpp）
+     *
+     * 旧版 ERA Rainbow 与 patcher_x86 引擎不互通，会在运行期直接覆盖同址 Hook；
+     * 此函数按安装快照比对并记录日志（每地址仅报告一次），供 DDraw 初始化与绘制路径调用。
+     */
+    void detectHookOverwrites();
+
+    /**
+     * @brief 安装测量类 Hook（定义于 H3FontExtension.cpp，首次文本绘制时调用一次）
+     *
+     * 旧版 ERA Rainbow 在 OnAfterWoG（本插件 DllMain 之后）用独立 Hook 引擎
+     * 直接覆盖 0x4B5580/5680/56F0/5770/57E0/58F0。将这些 Hook 延迟到首次
+     * 文本绘制时安装，可确保位于 ERA Hook 链的外层，测量结果不被 ERA 接管。
+     */
+    void installMeasureHooks();
+
+    /**
+     * @brief 恢复被 wogcn 固定的对话框宽度计算（定义于 H3FontExtension.cpp）
+     *
+     * 检测 0x4F6569/0x4F6599 是否被 wogcn 改写为固定宽度，若是则恢复原始指令，
+     * 使弹出框大小重新由测量 Hook 动态计算。幂等且低开销，可在绘制路径调用。
+     */
+    void restoreDynamicDialogWidth();
+
+    /**
      * @brief 获取文本的预处理布局（缓存命中则零解析，未命中则构建并填充缓存）
      */
     const std::vector<CleanLine>& getOrCreateLayout(H3FontExt* pFont, LPCSTR szText, int iBoxWidth,

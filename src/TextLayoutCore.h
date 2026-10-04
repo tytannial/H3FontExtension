@@ -15,12 +15,151 @@
 
 namespace H3FontExtension
 {
+    /** @brief 不受 locale 影响的 ASCII 小写转换 */
+    inline char asciiToLower(char c)
+    {
+        return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+    }
+
+    /** @brief 大小写不敏感的 ASCII 定长比较 */
+    inline bool equalsIgnoreCaseAscii(const char* lhs, const char* rhs, std::size_t len)
+    {
+        for (std::size_t i = 0; i < len; ++i)
+        {
+            if (asciiToLower(lhs[i]) != asciiToLower(rhs[i]))
+                return false;
+        }
+        return true;
+    }
+
     /**
-     * @brief 遍历文本中所有"可见 token"，自动跳过颜色码 {~RRGGBB} / { } / }
+     * @brief 解析十六进制颜色码（支持 6 位 RRGGBB / 8 位 RRGGBBAA，可带 '#' 前缀）
      *
-     * 颜色码格式：
-     *   - {~#RRGGBB}  十六进制颜色（或 {~colorname} 命名颜色）
-     *   - { / }        高亮切换（{ 进入高亮，} 恢复默认）
+     * ERA/原版语法中 8 位写法为 RRGGBBAA（如 {~FF000080}），本函数仅取 RGB 通道，
+     * 忽略 alpha（16 位色深渲染无透明度概念）。
+     *
+     * @param code 颜色码文本（不含 '~'）
+     * @param len  文本长度
+     * @param rgb  [out] 解析出的 0xRRGGBB
+     * @return 是否为合法的十六进制颜色码
+     */
+    inline bool parseHexColorCode(const char* code, std::size_t len, DWORD& rgb)
+    {
+        if (len > 0 && code[0] == '#')
+        {
+            ++code;
+            --len;
+        }
+
+        if (len != 6 && len != 8)
+            return false;
+
+        DWORD value = 0;
+        for (std::size_t i = 0; i < len; ++i)
+        {
+            const char c = code[i];
+            DWORD digit;
+            if (c >= '0' && c <= '9')
+                digit = static_cast<DWORD>(c - '0');
+            else if (c >= 'a' && c <= 'f')
+                digit = static_cast<DWORD>(c - 'a' + 10);
+            else if (c >= 'A' && c <= 'F')
+                digit = static_cast<DWORD>(c - 'A' + 10);
+            else
+                return false;
+            value = (value << 4) | digit;
+        }
+
+        rgb = (len == 8) ? (value >> 8) : value; // RRGGBBAA → RRGGBB
+        return true;
+    }
+
+    /**
+     * @brief 在 EML 属性串中查找指定键的值
+     *
+     * 属性语法：key=value 或 key="quoted value"，以空格分隔。
+     * 例：{"color=Red align=center"} 中查找 "color" 得到 "Red"。
+     *
+     * @param attrs    属性串起始（标签名之后）
+     * @param len      属性串长度
+     * @param key      要查找的键（ASCII，大小写不敏感）
+     * @param keyLen   键长度
+     * @param value    [out] 值起始指针（不含引号）
+     * @param valueLen [out] 值长度
+     * @return 是否找到该键
+     */
+    inline bool findEmlAttr(const char* attrs, std::size_t len,
+        const char* key, std::size_t keyLen,
+        const char*& value, std::size_t& valueLen)
+    {
+        std::size_t i = 0;
+        while (i < len)
+        {
+            while (i < len && attrs[i] == ' ')
+                ++i;
+            if (i >= len)
+                break;
+
+            const std::size_t keyStart = i;
+            while (i < len && attrs[i] != '=' && attrs[i] != ' ')
+                ++i;
+
+            if (i >= len || attrs[i] != '=')
+            {
+                // 无 '=' 的裸词：已由内层循环推进，防呆兜底
+                if (i == keyStart)
+                    ++i;
+                continue;
+            }
+
+            const std::size_t curKeyLen = i - keyStart;
+            ++i; // 跳过 '='
+
+            const char* val;
+            std::size_t vLen;
+            if (i < len && attrs[i] == '"')
+            {
+                ++i;
+                val = attrs + i;
+                while (i < len && attrs[i] != '"')
+                    ++i;
+                vLen = static_cast<std::size_t>(attrs + i - val);
+                if (i < len)
+                    ++i; // 跳过收尾引号
+            }
+            else
+            {
+                val = attrs + i;
+                while (i < len && attrs[i] != ' ')
+                    ++i;
+                vLen = static_cast<std::size_t>(attrs + i - val);
+            }
+
+            if (curKeyLen == keyLen && equalsIgnoreCaseAscii(attrs + keyStart, key, keyLen))
+            {
+                value = val;
+                valueLen = vLen;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** @brief 判断颜色码文本是否为 EML 复合标签 {~text ...} */
+    inline bool isEmlTextTag(const char* code, std::size_t len)
+    {
+        return len >= 4 && equalsIgnoreCaseAscii(code, "text", 4) &&
+            (len == 4 || code[4] == ' ');
+    }
+
+    /**
+     * @brief 遍历文本中所有"可见 token"，自动跳过颜色码与 EML 标签
+     *
+     * 控制标记格式：
+     *   - {~ColorName} / {~#RRGGBB} / {~RRGGBBAA}  颜色标签
+     *   - {~text color=... align=...}              EML 复合标签（属性含空格，需整体跳过）
+     *   - {~>defname:frame:group ...}              ERA 内嵌图片标签（本插件不渲染，按零宽度跳过）
+     *   - { / }                                    高亮切换（{ 进入高亮，} 恢复默认）
      *
      * 这些控制字符在遍历中被跳过，回调只接收实际可见字符。
      *
@@ -37,13 +176,15 @@ namespace H3FontExtension
         {
             uint8_t code = static_cast<uint8_t>(*szText);
 
-            // -------- 跳过颜色码 --------
+            // -------- 跳过颜色码 / EML 标签 --------
             if (code == '{' || code == '}')
             {
                 if (code == '{' && *(szText + 1) == '~')
                 {
                     szText += 2; // 跳过 "{~"
-                    while (*szText && *szText != '}' && *szText != ' ' && *szText != '\n')
+                    // 标签一律以 '}' 结尾；换行作为兜底终止，避免损坏的标签吞噬后续文本。
+                    // 注意：EML 属性（{~text color=Red}）含空格，不能以空格作为终止条件
+                    while (*szText && *szText != '}' && *szText != '\n')
                         ++szText;
                     if (*szText == '}') // 跳过 '}'
                         ++szText;

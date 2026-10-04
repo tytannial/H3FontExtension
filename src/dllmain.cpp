@@ -28,6 +28,7 @@ static bool isSupportedGame()
     case 0x21A944: // SoD（旧版）
     case 0x21AB84: // SoD Polish Gold
     case 0x239C00: // HotA
+    case 0x301000: // ERA / WoG（h3era.exe / h3era HD.exe，SoD 3.2 基座 + WoG 扩展）
         return true;
     default:
         return false;

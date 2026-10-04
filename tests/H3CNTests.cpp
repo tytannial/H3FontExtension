@@ -54,6 +54,34 @@ namespace
         }
     };
 
+    /** @brief 测试颜色解析：模拟生产 color_resolver 的 ERA 兼容路径 */
+    struct test_colors_eml
+    {
+        DWORD operator()(const char* code, std::size_t len, DWORD fallback, bool is32bit) const
+        {
+            if (len == 0)
+                return fallback;
+
+            if (isEmlTextTag(code, len))
+            {
+                const char* value = nullptr;
+                std::size_t valueLen = 0;
+                if (!findEmlAttr(code + 4, len - 4, "color", 5, value, valueLen))
+                    return fallback;
+                code = value;
+                len = valueLen;
+            }
+
+            DWORD rgb = 0;
+            if (parseHexColorCode(code, len, rgb))
+                return is32bit ? rgb : static_cast<DWORD>(rgb888ToRgb565(rgb));
+
+            if (len == 3 && equalsIgnoreCaseAscii(code, "red", 3))
+                return 0x00FF0000;
+            return fallback;
+        }
+    };
+
     void testIsSingleByte()
     {
         CHECK(isSingleByte(0x00));
@@ -228,6 +256,98 @@ namespace
         CHECK(highlight);
     }
 
+    void testParseHexColorCode()
+    {
+        DWORD rgb = 0;
+        CHECK(parseHexColorCode("#FF8000", 7, rgb) && rgb == 0xFF8000);
+        CHECK(parseHexColorCode("FF8000", 6, rgb) && rgb == 0xFF8000);
+        CHECK(parseHexColorCode("ff8000", 6, rgb) && rgb == 0xFF8000);
+        // 8 位 RRGGBBAA：忽略 alpha，仅取 RGB
+        CHECK(parseHexColorCode("FF800080", 8, rgb) && rgb == 0xFF8000);
+        CHECK(parseHexColorCode("#FF800080", 9, rgb) && rgb == 0xFF8000);
+        // 非法输入
+        CHECK(!parseHexColorCode("FF800", 5, rgb));
+        CHECK(!parseHexColorCode("FF80000", 7, rgb));
+        CHECK(!parseHexColorCode("GG8000", 6, rgb));
+        CHECK(!parseHexColorCode("", 0, rgb));
+        CHECK(!parseHexColorCode("#", 1, rgb));
+    }
+
+    void testFindEmlAttr()
+    {
+        const char attrs[] = "color=Red align=\"center\" from-y=10";
+        constexpr std::size_t attrsLen = sizeof(attrs) - 1;
+
+        const char* value = nullptr;
+        std::size_t valueLen = 0;
+
+        CHECK(findEmlAttr(attrs, attrsLen, "color", 5, value, valueLen));
+        CHECK(valueLen == 3 && std::memcmp(value, "Red", 3) == 0);
+
+        CHECK(findEmlAttr(attrs, attrsLen, "align", 5, value, valueLen));
+        CHECK(valueLen == 6 && std::memcmp(value, "center", 6) == 0);
+
+        CHECK(findEmlAttr(attrs, attrsLen, "from-y", 6, value, valueLen));
+        CHECK(valueLen == 2 && std::memcmp(value, "10", 2) == 0);
+
+        // 键名大小写不敏感
+        CHECK(findEmlAttr(attrs, attrsLen, "COLOR", 5, value, valueLen));
+
+        CHECK(!findEmlAttr(attrs, attrsLen, "missing", 7, value, valueLen));
+    }
+
+    void testEmlTagSkipping()
+    {
+        // EML 复合标签含空格，必须整体跳过（不能把属性文本当作可见字符）
+        std::vector<TextLineStruct> lines;
+        splitTextIntoLines(test_width{}, true, "{~text color=Red}ab", 10, lines);
+        CHECK(lines.size() == 1);
+        if (lines.size() == 1)
+        {
+            CHECK(lines[0].line_width == 2);
+            CHECK(lines[0].text == "{~text color=Red}ab");
+        }
+
+        // ERA 内嵌图片标签按零宽度跳过
+        lines.clear();
+        splitTextIntoLines(test_width{}, true, "{~>image:1:2 block}ab", 10, lines);
+        CHECK(lines.size() == 1);
+        if (lines.size() == 1)
+        {
+            CHECK(lines[0].line_width == 2);
+        }
+    }
+
+    void testPreprocessEml()
+    {
+        TextLineStruct src;
+        src.text = "{~text color=#00FF00}x";
+        src.line_width = 1;
+
+        CleanLine clean;
+        preprocessLine(test_width{}, test_colors_eml{}, true, src, 0x00111111, 0x00222222, true, clean);
+
+        CHECK(clean.text == "x");
+        CHECK(clean.stops.size() == 1);
+        if (clean.stops.size() == 1)
+        {
+            CHECK(clean.stops[0].byte_pos == 0);
+            CHECK(clean.stops[0].color == 0x0000FF00);
+        }
+
+        // 无 # 的 6 位十六进制与 8 位 RRGGBBAA（32 位与 16 位两条路径）
+        CHECK(test_colors_eml{}(("FF0000"), 6, 0xBAD, true) == 0x00FF0000);
+        CHECK(test_colors_eml{}(("FF000080"), 8, 0xBAD, true) == 0x00FF0000);
+        CHECK(test_colors_eml{}(("FF0000"), 6, 0xBAD, false) == rgb888ToRgb565(0xFF0000));
+
+        // 大小写不敏感命名颜色
+        CHECK(test_colors_eml{}(("RED"), 3, 0xBAD, true) == 0x00FF0000);
+
+        // EML 标签无 color 属性 → 回退
+        const char noColor[] = "text align=center";
+        CHECK(test_colors_eml{}(noColor, sizeof(noColor) - 1, 0xBAD, true) == 0xBAD);
+    }
+
 } // namespace
 
 int main()
@@ -243,6 +363,10 @@ int main()
     testPreprocessColors();
     testColorDisabled();
     testUpdateColorState();
+    testParseHexColorCode();
+    testFindEmlAttr();
+    testEmlTagSkipping();
+    testPreprocessEml();
 
     std::printf("H3CNTests: %d checks, %d failures\n", gChecks, gFailures);
     return (gFailures == 0) ? 0 : 1;
