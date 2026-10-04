@@ -824,14 +824,19 @@ namespace H3FontExtension
             // ---- 阶段 3：拆行判定 ----
             if (line_width + wordWidth + blankWidth > iBoxWidth)
             {
-                if (line_width > 0)
-                    pushLine(true);
-                blankCount = 0;
-                blankWidth = 0;
-
-                // 如果词本身就超宽，逐字符拆行
+                // 超宽词（如无空格的中文长串）：从当前行剩余空间继续逐字符拆行，
+                // 避免在词前整行断行导致上一行大量留白（如 "ERA" 独占一行）
                 if (wordWidth > iBoxWidth)
                 {
+                    // 词前空格并入当前行
+                    if (blankCount > 0 && (line_width > 0 || !lineBuf.empty()))
+                    {
+                        lineBuf.append(blankCount, ' ');
+                        line_width += blankWidth;
+                    }
+                    blankCount = 0;
+                    blankWidth = 0;
+
                     LPCSTR p = wordStart;
                     while (p < realEnd)
                     {
@@ -910,6 +915,12 @@ namespace H3FontExtension
                     szText = realEnd;
                     continue; // 词已处理完毕，跳过阶段 4
                 }
+
+                // 普通词：整体换行
+                if (line_width > 0)
+                    pushLine(true);
+                blankCount = 0;
+                blankWidth = 0;
             }
 
             // ---- 阶段 4：将词追加到当前行 ----

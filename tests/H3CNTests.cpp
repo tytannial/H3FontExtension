@@ -202,6 +202,21 @@ namespace
         }
     }
 
+    void testSplitLongCJKWordFill()
+    {
+        // 英文词 + 空格 + 超长中文串（超宽词）：第一行继续填满，而非 "ERA" 独占一行
+        const char text[] = "ERA 3\xD6\xD0\xCE\xC4\xB2\xE2\xCA\xD4\xCE\xC4\xB1\xBE"; // "ERA 3中文测试文本"
+        std::vector<TextLineStruct> lines;
+        splitTextIntoLines(test_width{}, test_images{}, true, text, 8, lines);
+        CHECK(lines.size() == 3);
+        if (lines.size() == 3)
+        {
+            CHECK(lines[0].text == "ERA 3\xD6\xD0"); // "ERA 3中"
+            CHECK(lines[0].line_width == 7);
+            CHECK(lines[2].text == "\xB1\xBE"); // "本"
+        }
+    }
+
     void testSplitExplicitNewline()
     {
         std::vector<TextLineStruct> lines;
@@ -523,6 +538,7 @@ int main()
     testGbkTables();
     testSplitWords();
     testSplitCJK();
+    testSplitLongCJKWordFill();
     testSplitExplicitNewline();
     testSplitColorCodeWidth();
     testPreprocessColors();
