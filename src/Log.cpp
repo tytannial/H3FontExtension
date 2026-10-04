@@ -1,6 +1,7 @@
 //===----------------------------------------------------------------------===//
-// 日志：写入插件 DLL 同目录的 H3CN.log（UTF-8，追加模式）
+// 日志：写入插件 DLL 同目录的 H3CN.log（UTF-8）
 //
+// 仅保留最后一次运行的日志：initLog 时截断文件；
 // 每次写入独立开关文件，调用频率低（初始化/错误路径），无需持有句柄。
 //===----------------------------------------------------------------------===//
 
@@ -66,6 +67,14 @@ namespace H3FontExtension
             return;
 
         ::wcscpy_s(gLogPath, path);
+
+        // 仅保留最后一次运行的日志：启动时截断旧内容
+        const HANDLE file = ::CreateFileW(gLogPath, GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, CREATE_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file != INVALID_HANDLE_VALUE)
+            ::CloseHandle(file);
+
         gLogReady = true;
         logInfo("=== H3FontExtension 日志开始 ===");
     }
