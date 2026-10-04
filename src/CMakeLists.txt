@@ -4,6 +4,8 @@
 
 add_library(H3CN SHARED
     dllmain.cpp
+    DefImage.cpp
+    DefImage.h
     ExtFont.cpp
     ExtFont.h
     GlyphRasterizer.cpp

@@ -6,6 +6,7 @@
 
 #include "H3FontExtensionInternal.h"
 
+#include "DefImage.h"
 #include "Log.h"
 #include "TextLayoutCore.h"
 
@@ -162,6 +163,70 @@ namespace H3FontExtension
             return is32bit ? it->second.rgb888 : it->second.rgb565;
         }
     };
+
+    /**
+     * @brief 解析并准备内嵌图片锚点公共数据（生产实现）
+     *
+     * 流程：解析 {~>...} 标签 → 加载 DEF（带缓存）→ 查询帧尺寸 →
+     * 按 NBSP 占位宽度（fillChars = ceil(帧宽 / NBSP 宽)）填充锚点。
+     *
+     * @return 解析或资源加载失败返回 false（调用方按零宽跳过）
+     */
+    static bool prepareImageAnchor(const H3FontExt* pFont, const char* code, std::size_t len, ImageAnchor& anchor)
+    {
+        InlineImageSpec spec;
+        if (!parseInlineImageTag(code, len, spec))
+            return false;
+
+        CSprite* sprite = loadSpriteCached(spec.defName);
+        if (!sprite)
+            return false;
+
+        int frameW = 0;
+        int frameH = 0;
+        if (!getFrameMetrics(sprite, spec.group, spec.frame, frameW, frameH))
+            return false;
+
+        const int nbsp = nbspWidth(*pFont);
+        const int fillChars = (frameW + nbsp - 1) / nbsp;
+
+        anchor.sprite = sprite;
+        anchor.group = spec.group;
+        anchor.frame = spec.frame;
+        anchor.width = fillChars * nbsp;
+        anchor.height = frameH;
+        anchor.offsetX = (anchor.width - frameW) / 2;
+        anchor.mirror = spec.mirror;
+        anchor.sliceStartY = spec.fromY;
+        anchor.sliceHeight = (spec.sliceHeight > 0) ? spec.sliceHeight : frameH;
+        anchor.offsetY = spec.offsetY;
+        anchor.valign = spec.valign;
+        anchor.numLines = 1; // 块级多行切片在后续批次实现
+        return true;
+    }
+
+    /** @brief 生产图片占位宽度实现（供折行/测量使用） */
+    struct def_image_metrics
+    {
+        const H3FontExt* font;
+
+        int operator()(const char* code, std::size_t len) const
+        {
+            ImageAnchor anchor;
+            return prepareImageAnchor(font, code, len, anchor) ? anchor.width : 0;
+        }
+    };
+
+    /** @brief 生产图片锚点收集实现（供预处理阶段使用） */
+    struct def_image_collector
+    {
+        const H3FontExt* font;
+
+        bool operator()(const char* code, std::size_t len, ImageAnchor& anchor) const
+        {
+            return prepareImageAnchor(font, code, len, anchor);
+        }
+    };
     // ============================================================
     // Section 4: 布局缓存
     // ============================================================
@@ -275,14 +340,14 @@ namespace H3FontExtension
         // 函数级复用缓冲（跨调用保留容量，避免每帧堆分配；不与其他入口共享）
         static std::vector<TextLineStruct> scratch;
         scratch.clear();
-        splitTextIntoLines(font_width{pFont}, gTextColorEnabled, szText, iBoxWidth, scratch);
+        splitTextIntoLines(font_width{pFont}, def_image_metrics{pFont}, gTextColorEnabled, szText, iBoxWidth, scratch);
 
         slot.lines.clear();
         slot.lines.reserve(scratch.size());
         for (const auto& rawLine : scratch)
         {
             slot.lines.emplace_back();
-            preprocessLine(font_width{pFont}, color_resolver{}, gTextColorEnabled, rawLine, default_color, highlight_color, is32bit, slot.lines.back());
+            preprocessLine(font_width{pFont}, color_resolver{}, def_image_collector{pFont}, gTextColorEnabled, rawLine, default_color, highlight_color, is32bit, slot.lines.back());
         }
         return slot.lines;
     }
@@ -352,7 +417,7 @@ namespace H3FontExtension
         // 独立复用缓冲（不与布局缓存的拆行缓冲共享，避免潜在重入相互踩踏）
         static std::vector<TextLineStruct> scratch;
         scratch.clear();
-        splitTextIntoLines(font_width{pFont}, gTextColorEnabled, szText, iBoxWidth, scratch);
+        splitTextIntoLines(font_width{pFont}, def_image_metrics{pFont}, gTextColorEnabled, szText, iBoxWidth, scratch);
         for (const auto& line : scratch)
         {
             lines.emplace_back(line.text.c_str());
@@ -376,7 +441,7 @@ namespace H3FontExtension
             int maxWidth = 0;
             int wordWidth = 0;
 
-            forEachVisibleChar(font_width{pFont}, szText,
+            forEachVisibleChar(font_width{pFont}, def_image_metrics{pFont}, szText,
                 [&](TokenType type, int width, int /*bytes*/)
                 {
                     if (type == TokenType::NEWLINE || type == TokenType::SPACE || type == TokenType::DOUBLE_BYTE)
@@ -414,7 +479,7 @@ namespace H3FontExtension
             int maxWidth = 0;
             int line_width = 0;
 
-            forEachVisibleChar(font_width{pFont}, szText,
+            forEachVisibleChar(font_width{pFont}, def_image_metrics{pFont}, szText,
                 [&](TokenType type, int width, int /*bytes*/)
                 {
                     if (type == TokenType::NEWLINE)
@@ -456,7 +521,7 @@ namespace H3FontExtension
             int lineCount = 1;
             int line_width = 0;
 
-            forEachVisibleChar(font_width{pFont}, szText,
+            forEachVisibleChar(font_width{pFont}, def_image_metrics{pFont}, szText,
                 [&](TokenType type, int width, int /*bytes*/)
                 {
                     if (type == TokenType::NEWLINE)
@@ -496,7 +561,7 @@ namespace H3FontExtension
         return cachedMeasure(cache, pFont, szText, 0, [&]()
         {
             int line_width = 0;
-            forEachVisibleChar(font_width{pFont}, szText,
+            forEachVisibleChar(font_width{pFont}, def_image_metrics{pFont}, szText,
                 [&](TokenType type, int width, int /*bytes*/)
                 {
                     if (type == TokenType::NEWLINE)
@@ -522,7 +587,7 @@ namespace H3FontExtension
             int maxWidth = 0;
             int line_width = 0;
 
-            forEachVisibleChar(font_width{pFont}, szText,
+            forEachVisibleChar(font_width{pFont}, def_image_metrics{pFont}, szText,
                 [&](TokenType type, int width, int /*bytes*/)
                 {
                     if (type == TokenType::NEWLINE)
@@ -560,7 +625,7 @@ namespace H3FontExtension
         return cachedMeasure(cache, pFont, szText, 0, [&]()
         {
             int totalWidth = 0;
-            forEachVisibleChar(font_width{pFont}, szText,
+            forEachVisibleChar(font_width{pFont}, def_image_metrics{pFont}, szText,
                 [&](TokenType /*type*/, int width, int /*bytes*/)
                 {
                     totalWidth += width;

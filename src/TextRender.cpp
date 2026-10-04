@@ -6,6 +6,7 @@
 
 #include "H3FontExtensionInternal.h"
 
+#include "DefImage.h"
 #include "Log.h"
 
 #include <cstring>
@@ -292,6 +293,43 @@ namespace H3FontExtension
     }
 
     /**
+     * @brief 绘制一个内嵌 DEF 图片锚点（行内完整帧 + valign 垂直对齐）
+     *
+     * 批次 A：非块级图片按行内完整帧绘制；块级多行切片的锚点布局在后续批次实现。
+     * 16/32 位像素格式由游戏绘制函数（0x47B610）的适配层处理，此处不区分色深。
+     *
+     * @param img        图片锚点（sprite/帧/切片/镜像）
+     * @param pcx        目标 PCX
+     * @param x          锚点的水平位置（占位框左边缘）
+     * @param lineY      本行顶部 Y
+     * @param fontHeight 行高
+     */
+    static void drawImageAnchor(const ImageAnchor& img, Bitmap16Bit* pcx, int x, int lineY, int fontHeight)
+    {
+        if (!img.sprite || img.sliceHeight <= 0)
+            return;
+
+        int y;
+        switch (img.valign)
+        {
+        case ImageVAlign::Top:
+            y = lineY;
+            break;
+        case ImageVAlign::Bottom:
+            y = lineY + fontHeight - img.sliceHeight;
+            break;
+        case ImageVAlign::Middle:
+        default:
+            y = lineY + (fontHeight - img.sliceHeight) / 2;
+            break;
+        }
+
+        drawSpriteFrame(img.sprite, img.group, img.frame,
+            0, img.sliceStartY, 0, img.sliceHeight,
+            pcx, x + img.offsetX, y + img.offsetY, img.mirror);
+    }
+
+    /**
      * @brief 逐行绘制预处理后的文本（含颜色切换与水平对齐）
      *
      * @tparam Is32       是否 32 位色深
@@ -347,6 +385,10 @@ namespace H3FontExtension
             std::size_t stopIdx = 0;
             const std::size_t stopCount = line.stops.size();
 
+            // 图片锚点跟踪（按 bytePos 升序）
+            std::size_t imageIdx = 0;
+            const std::size_t imageCount = line.images.size();
+
             const int lineY = iY + startY + rowIdx * fontHeight;
             const int asciiLineY = lineY + asciiShift; // 原版位图 ASCII 行位置
             const int gdiLineY = lineY + shift;        // GDI 字形行内居中位置
@@ -368,6 +410,15 @@ namespace H3FontExtension
                 {
                     curColor = line.stops[stopIdx].color;
                     ++stopIdx;
+                }
+
+                // 在当前位置绘制内嵌图片锚点并推进占位宽度
+                while (imageIdx < imageCount && line.images[imageIdx].bytePos == byte_pos)
+                {
+                    const ImageAnchor& img = line.images[imageIdx];
+                    drawImageAnchor(img, pPcx, curX, lineY, fontHeight);
+                    curX += img.width;
+                    ++imageIdx;
                 }
 
                 const uint8_t code = static_cast<uint8_t>(*p);
@@ -408,6 +459,15 @@ namespace H3FontExtension
                         ++charIdx;
                     }
                 }
+            }
+
+            // 行尾图片锚点（bytePos == clean text 长度）
+            while (imageIdx < imageCount)
+            {
+                const ImageAnchor& img = line.images[imageIdx];
+                drawImageAnchor(img, pPcx, curX, lineY, fontHeight);
+                curX += img.width;
+                ++imageIdx;
             }
 
             // 行尾光标（cursorPos 等于本行可见字符数）

@@ -48,7 +48,56 @@ namespace H3FontExtension
         NEWLINE,    ///< 换行符 '\n'
         SPACE,      ///< 空格 ' '
         SINGLE_BYTE, ///< ASCII 单字节可见字符
-        DOUBLE_BYTE  ///< 双字节字符（GBK 汉字等）
+        DOUBLE_BYTE, ///< 双字节字符（GBK 汉字等）
+        IMAGE        ///< EML 内嵌 DEF 图片标签 {~>...}（宽度 = 占位宽度）
+    };
+
+    /** @brief EML 内嵌图片垂直对齐（valign 属性） */
+    enum class ImageVAlign : uint8_t {
+        Middle = 0, ///< 默认：行内居中
+        Top,        ///< valign=top
+        Bottom      ///< valign=bottom
+    };
+
+    /**
+     * @brief EML 内嵌图片标签（{~>...}）的解析结果
+     *
+     * 语法（与 ERA Rainbow 一致）：
+     *   {~>DefName[:group:frame] [block] [mirror] [valign=top|middle|bottom]
+     *      [from-y=N] [height=N] [offset-y=N]}
+     * 单参数 :frame；双参数 :group:frame。
+     */
+    struct InlineImageSpec
+    {
+        std::string defName;                          ///< DEF 资源名
+        int group = 0;                                ///< 帧组索引
+        int frame = 0;                                ///< 帧索引
+        bool isBlock = false;                         ///< block 属性：块级图片（独占行，逐行切片）
+        bool mirror = false;                          ///< mirror 属性：水平镜像
+        int fromY = 0;                                ///< from-y 属性：块级切片起始 Y
+        int sliceHeight = -1;                         ///< height 属性：块级切片高度（-1 = 帧高）
+        int offsetY = 0;                              ///< offset-y 属性：垂直偏移
+        ImageVAlign valign = ImageVAlign::Middle;     ///< valign 属性
+    };
+
+    /**
+     * @brief 布局结果中的内嵌图片锚点（CleanLine 内按 bytePos 升序排列）
+     */
+    struct ImageAnchor
+    {
+        std::size_t bytePos = 0;    ///< 在 clean text 中的插入位置（绘制/推进用）
+        int width = 0;              ///< 占位宽度（像素）
+        int height = 0;             ///< 帧裁剪高度（像素）
+        CSprite* sprite = nullptr;  ///< DEF 资源（游戏 sprite 对象）
+        int group = 0;              ///< 帧组索引
+        int frame = 0;              ///< 帧索引
+        bool mirror = false;        ///< 水平镜像
+        int offsetX = 0;            ///< 水平偏移（占位框内居中留白）
+        int offsetY = 0;            ///< 垂直偏移（块级切片）
+        int sliceStartY = 0;        ///< 绘制切片起始 Y（帧内坐标）
+        int sliceHeight = 0;        ///< 绘制切片高度
+        int numLines = 1;           ///< 块级图片占用的行数
+        ImageVAlign valign = ImageVAlign::Middle; ///< 行内垂直对齐
     };
 
     // ============================================================
@@ -88,14 +137,15 @@ namespace H3FontExtension
      * @brief 预处理后的文本行
      *
      * 颜色码已从 text 中剥离，颜色信息独立存储在 stops 中。
-     * 渲染时逐字节遍历 text，遇到 stop 点切换颜色。
+     * 渲染时逐字节遍历 text，遇到 stop 点切换颜色，遇到图片锚点绘制 DEF。
      */
     struct CleanLine
     {
         std::string text;               ///< 纯可见字符（无颜色码、无控制字符）
-        int         line_width;          ///< 该行可见字符的总像素宽度
+        int         line_width;          ///< 该行可见字符 + 图片占位的总像素宽度
         std::vector<ColorStop> stops;   ///< 按 byte_pos 升序排列的颜色变更点
         std::vector<uint16_t> advances; ///< 每个可见字符的步进宽度（布局阶段预计算，绘制期零测量）
+        std::vector<ImageAnchor> images; ///< 内嵌 DEF 图片锚点（按 bytePos 升序）
     };
 
     // ============================================================

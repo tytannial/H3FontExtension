@@ -82,6 +82,39 @@ namespace
         }
     };
 
+    /**
+     * @brief 测试内嵌图片实现：DEF 名 "img" 宽度固定 4px
+     *
+     * 同时提供两种签名，分别注入 splitTextIntoLines/forEachVisibleChar（宽度）
+     * 与 preprocessLine（锚点收集）。
+     */
+    struct test_images
+    {
+        int operator()(const char* code, std::size_t len) const
+        {
+            ImageAnchor anchor;
+            return (*this)(code, len, anchor) ? anchor.width : 0;
+        }
+
+        bool operator()(const char* code, std::size_t len, ImageAnchor& anchor) const
+        {
+            InlineImageSpec spec;
+            if (!parseInlineImageTag(code, len, spec))
+                return false;
+            if (spec.defName != "img")
+                return false;
+
+            anchor.width = 4;
+            anchor.height = 4;
+            anchor.group = spec.group;
+            anchor.frame = spec.frame;
+            anchor.mirror = spec.mirror;
+            anchor.sliceStartY = spec.fromY;
+            anchor.sliceHeight = (spec.sliceHeight > 0) ? spec.sliceHeight : 4;
+            return true;
+        }
+    };
+
     void testIsSingleByte()
     {
         CHECK(isSingleByte(0x00));
@@ -140,7 +173,7 @@ namespace
     {
         // "ab cd"：box=4 → "ab" 与 "cd" 分两行（空格不落行首）
         std::vector<TextLineStruct> lines;
-        splitTextIntoLines(test_width{}, true, "ab cd", 4, lines);
+        splitTextIntoLines(test_width{}, test_images{}, true, "ab cd", 4, lines);
         CHECK(lines.size() == 2);
         if (lines.size() == 2)
         {
@@ -154,7 +187,7 @@ namespace
         // 三个汉字（各 2px），box=4 → 每行两个 / 一个，超宽词逐字符拆行
         const char text[] = "\xD6\xD0\xCE\xC4\xD7\xD6"; // 中文字（GBK）
         std::vector<TextLineStruct> lines;
-        splitTextIntoLines(test_width{}, true, text, 4, lines);
+        splitTextIntoLines(test_width{}, test_images{}, true, text, 4, lines);
         CHECK(lines.size() == 2);
         if (lines.size() == 2)
         {
@@ -166,7 +199,7 @@ namespace
     void testSplitExplicitNewline()
     {
         std::vector<TextLineStruct> lines;
-        splitTextIntoLines(test_width{}, true, "a\nb", 10, lines);
+        splitTextIntoLines(test_width{}, test_images{}, true, "a\nb", 10, lines);
         CHECK(lines.size() == 2);
         if (lines.size() == 2)
         {
@@ -179,7 +212,7 @@ namespace
     {
         // 颜色码不参与宽度："{~red}ab" 宽 2，且原始标记保留在行缓冲中
         std::vector<TextLineStruct> lines;
-        splitTextIntoLines(test_width{}, true, "{~red}ab", 10, lines);
+        splitTextIntoLines(test_width{}, test_images{}, true, "{~red}ab", 10, lines);
         CHECK(lines.size() == 1);
         if (lines.size() == 1)
         {
@@ -195,7 +228,7 @@ namespace
         src.line_width = 3;
 
         CleanLine clean;
-        preprocessLine(test_width{}, test_colors{}, true, src, 0x00111111, 0x00222222, true, clean);
+        preprocessLine(test_width{}, test_colors{}, test_images{}, true, src, 0x00111111, 0x00222222, true, clean);
 
         CHECK(clean.text == "abc");
         CHECK(clean.line_width == 3);
@@ -216,7 +249,7 @@ namespace
         src.line_width = 1;
 
         CleanLine clean;
-        preprocessLine(test_width{}, test_colors{}, false, src, 0x00111111, 0x00222222, true, clean);
+        preprocessLine(test_width{}, test_colors{}, test_images{}, false, src, 0x00111111, 0x00222222, true, clean);
 
         CHECK(clean.text == "a");
         CHECK(clean.stops.size() == 1);
@@ -300,7 +333,7 @@ namespace
     {
         // EML 复合标签含空格，必须整体跳过（不能把属性文本当作可见字符）
         std::vector<TextLineStruct> lines;
-        splitTextIntoLines(test_width{}, true, "{~text color=Red}ab", 10, lines);
+        splitTextIntoLines(test_width{}, test_images{}, true, "{~text color=Red}ab", 10, lines);
         CHECK(lines.size() == 1);
         if (lines.size() == 1)
         {
@@ -308,9 +341,9 @@ namespace
             CHECK(lines[0].text == "{~text color=Red}ab");
         }
 
-        // ERA 内嵌图片标签按零宽度跳过
+        // 未匹配到资源的图片标签按零宽跳过（test_images 仅识别 "img"）
         lines.clear();
-        splitTextIntoLines(test_width{}, true, "{~>image:1:2 block}ab", 10, lines);
+        splitTextIntoLines(test_width{}, test_images{}, true, "{~>image:1:2 block}ab", 10, lines);
         CHECK(lines.size() == 1);
         if (lines.size() == 1)
         {
@@ -325,7 +358,7 @@ namespace
         src.line_width = 1;
 
         CleanLine clean;
-        preprocessLine(test_width{}, test_colors_eml{}, true, src, 0x00111111, 0x00222222, true, clean);
+        preprocessLine(test_width{}, test_colors_eml{}, test_images{}, true, src, 0x00111111, 0x00222222, true, clean);
 
         CHECK(clean.text == "x");
         CHECK(clean.stops.size() == 1);
@@ -348,6 +381,105 @@ namespace
         CHECK(test_colors_eml{}(noColor, sizeof(noColor) - 1, 0xBAD, true) == 0xBAD);
     }
 
+    void testParseInlineImageTag()
+    {
+        InlineImageSpec spec;
+
+        // 基本：仅 DEF 名
+        CHECK(parseInlineImageTag(">img", 4, spec));
+        CHECK(spec.defName == "img" && spec.group == 0 && spec.frame == 0);
+        CHECK(!spec.isBlock && !spec.mirror);
+        CHECK(spec.valign == ImageVAlign::Middle);
+
+        // 单参数 = frame
+        CHECK(parseInlineImageTag(">img:3", 6, spec));
+        CHECK(spec.group == 0 && spec.frame == 3);
+
+        // 双参数 = group:frame
+        CHECK(parseInlineImageTag(">img:2:5", 8, spec));
+        CHECK(spec.group == 2 && spec.frame == 5);
+
+        // 引号包裹的 DEF 名（可含空格）
+        CHECK(parseInlineImageTag(">\"my def.def\":1", 15, spec));
+        CHECK(spec.defName == "my def.def" && spec.frame == 1);
+
+        // 全部属性
+        const char full[] = ">img:2:5 block mirror valign=bottom from-y=1 height=8 offset-y=2";
+        CHECK(parseInlineImageTag(full, sizeof(full) - 1, spec));
+        CHECK(spec.group == 2 && spec.frame == 5);
+        CHECK(spec.isBlock && spec.mirror);
+        CHECK(spec.valign == ImageVAlign::Bottom);
+        CHECK(spec.fromY == 1 && spec.sliceHeight == 8 && spec.offsetY == 2);
+
+        // valign 大小写不敏感
+        const char top[] = ">img valign=TOP";
+        CHECK(parseInlineImageTag(top, sizeof(top) - 1, spec) && spec.valign == ImageVAlign::Top);
+
+        // 非法输入
+        CHECK(!parseInlineImageTag(">", 1, spec));
+        CHECK(!parseInlineImageTag("img", 3, spec));
+        CHECK(!parseInlineImageTag("> ", 2, spec));
+    }
+
+    void testHasEmlFlag()
+    {
+        const char attrs[] = "block mirror=1 valign=top";
+        constexpr std::size_t attrsLen = sizeof(attrs) - 1;
+        CHECK(hasEmlFlag(attrs, attrsLen, "block", 5));
+        CHECK(hasEmlFlag(attrs, attrsLen, "mirror", 6));
+        CHECK(hasEmlFlag(attrs, attrsLen, "BLOCK", 5)); // 大小写不敏感
+        CHECK(!hasEmlFlag(attrs, attrsLen, "from-y", 6));
+        CHECK(!hasEmlFlag(attrs, attrsLen, "bloc", 4));
+    }
+
+    void testImageLayout()
+    {
+        // 图片占位宽度计入行宽：a(1) + img(4) + b(1) = 6
+        std::vector<TextLineStruct> lines;
+        splitTextIntoLines(test_width{}, test_images{}, true, "a{~>img}b", 10, lines);
+        CHECK(lines.size() == 1);
+        if (lines.size() == 1)
+        {
+            CHECK(lines[0].line_width == 6);
+            CHECK(lines[0].text == "a{~>img}b");
+        }
+
+        // 图片放不下时作为不可分割单元整体换行
+        lines.clear();
+        splitTextIntoLines(test_width{}, test_images{}, true, "aaaa{~>img}", 5, lines);
+        CHECK(lines.size() == 2);
+        if (lines.size() == 2)
+        {
+            CHECK(lines[0].text == "aaaa" && lines[0].line_width == 4);
+            CHECK(lines[1].text == "{~>img}" && lines[1].line_width == 4);
+        }
+
+        // 预处理：图片生成锚点且不产生可见字符
+        TextLineStruct src;
+        src.text = "{~>img}a";
+        src.line_width = 5;
+
+        CleanLine clean;
+        preprocessLine(test_width{}, test_colors_eml{}, test_images{}, true, src, 0x00111111, 0x00222222, true, clean);
+        CHECK(clean.text == "a");
+        CHECK(clean.images.size() == 1);
+        if (clean.images.size() == 1)
+        {
+            CHECK(clean.images[0].bytePos == 0);
+            CHECK(clean.images[0].width == 4);
+        }
+
+        // 未知 DEF 解析失败：零宽跳过且不产生锚点
+        TextLineStruct src2;
+        src2.text = "{~>unknown}a";
+        src2.line_width = 1;
+
+        CleanLine clean2;
+        preprocessLine(test_width{}, test_colors_eml{}, test_images{}, true, src2, 0x00111111, 0x00222222, true, clean2);
+        CHECK(clean2.text == "a");
+        CHECK(clean2.images.empty());
+    }
+
 } // namespace
 
 int main()
@@ -367,6 +499,9 @@ int main()
     testFindEmlAttr();
     testEmlTagSkipping();
     testPreprocessEml();
+    testParseInlineImageTag();
+    testHasEmlFlag();
+    testImageLayout();
 
     std::printf("H3CNTests: %d checks, %d failures\n", gChecks, gFailures);
     return (gFailures == 0) ? 0 : 1;

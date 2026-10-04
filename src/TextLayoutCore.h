@@ -152,25 +152,195 @@ namespace H3FontExtension
             (len == 4 || code[4] == ' ');
     }
 
+    /** @brief 解析简单十进制整数（可带负号）；失败时 value 不变并返回 false */
+    inline bool parseIntValue(const char*& p, const char* end, int& value)
+    {
+        bool negative = false;
+        if (p < end && *p == '-')
+        {
+            negative = true;
+            ++p;
+        }
+        if (p >= end || *p < '0' || *p > '9')
+            return false;
+
+        int v = 0;
+        while (p < end && *p >= '0' && *p <= '9')
+        {
+            v = v * 10 + (*p - '0');
+            ++p;
+        }
+        value = negative ? -v : v;
+        return true;
+    }
+
+    /**
+     * @brief 检测 EML 属性串中是否存在指定键/裸词标志（如 block、mirror）
+     *
+     * ERA 语义：键存在即为真（无论是否带 =value）。
+     */
+    inline bool hasEmlFlag(const char* attrs, std::size_t len, const char* flag, std::size_t flagLen)
+    {
+        std::size_t i = 0;
+        while (i < len)
+        {
+            while (i < len && attrs[i] == ' ')
+                ++i;
+            if (i >= len)
+                break;
+
+            const std::size_t start = i;
+            while (i < len && attrs[i] != ' ' && attrs[i] != '=')
+                ++i;
+
+            if (i - start == flagLen && equalsIgnoreCaseAscii(attrs + start, flag, flagLen))
+                return true;
+
+            // 跳过该属性的值
+            if (i < len && attrs[i] == '=')
+            {
+                ++i;
+                if (i < len && attrs[i] == '"')
+                {
+                    ++i;
+                    while (i < len && attrs[i] != '"')
+                        ++i;
+                    if (i < len)
+                        ++i;
+                }
+                else
+                {
+                    while (i < len && attrs[i] != ' ')
+                        ++i;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @brief 解析 EML 内嵌图片标签（{~>...} 中 '>' 起始的内容）
+     *
+     * 语法（与 ERA Rainbow 一致）：
+     *   DefName[:frame] / DefName[:group:frame] [block] [mirror]
+     *   [valign=top|middle|bottom] [from-y=N] [height=N] [offset-y=N]
+     *
+     * @param code 标签内容（首个字符必须是 '>'）
+     * @param len  长度
+     * @param spec [out] 解析结果
+     * @return 解析是否成功（DEF 名非空）
+     */
+    inline bool parseInlineImageTag(const char* code, std::size_t len, InlineImageSpec& spec)
+    {
+        if (len < 2 || code[0] != '>')
+            return false;
+
+        const char* p = code + 1;
+        const char* const end = code + len;
+
+        // ---- DEF 名：引号包裹或读到 ':' / ' ' / 结束 ----
+        std::string name;
+        if (p < end && *p == '"')
+        {
+            ++p;
+            while (p < end && *p != '"')
+                name.push_back(*p++);
+            if (p < end)
+                ++p; // 跳过收尾引号
+        }
+        else
+        {
+            while (p < end && *p != ':' && *p != ' ')
+                name.push_back(*p++);
+        }
+        if (name.empty())
+            return false;
+        spec.defName = std::move(name);
+
+        // ---- 可选 :frame 或 :group:frame ----
+        int first = -1;
+        int second = -1;
+        if (p < end && *p == ':')
+        {
+            ++p;
+            parseIntValue(p, end, first);
+            if (p < end && *p == ':')
+            {
+                ++p;
+                parseIntValue(p, end, second);
+            }
+        }
+        if (second >= 0)
+        {
+            spec.group = (first >= 0) ? first : 0;
+            spec.frame = second;
+        }
+        else if (first >= 0)
+        {
+            spec.frame = first;
+        }
+
+        // ---- 属性 ----
+        const char* attrs = p;
+        const std::size_t attrsLen = static_cast<std::size_t>(end - p);
+
+        spec.isBlock = hasEmlFlag(attrs, attrsLen, "block", 5);
+        spec.mirror = hasEmlFlag(attrs, attrsLen, "mirror", 6);
+
+        const char* value = nullptr;
+        std::size_t valueLen = 0;
+
+        if (findEmlAttr(attrs, attrsLen, "from-y", 6, value, valueLen))
+        {
+            const char* v = value;
+            parseIntValue(v, value + valueLen, spec.fromY);
+        }
+        if (findEmlAttr(attrs, attrsLen, "height", 6, value, valueLen))
+        {
+            const char* v = value;
+            int h = -1;
+            if (parseIntValue(v, value + valueLen, h))
+                spec.sliceHeight = h;
+        }
+        if (findEmlAttr(attrs, attrsLen, "offset-y", 8, value, valueLen))
+        {
+            const char* v = value;
+            parseIntValue(v, value + valueLen, spec.offsetY);
+        }
+        if (findEmlAttr(attrs, attrsLen, "valign", 6, value, valueLen))
+        {
+            if (valueLen == 3 && equalsIgnoreCaseAscii(value, "top", 3))
+                spec.valign = ImageVAlign::Top;
+            else if (valueLen == 6 && equalsIgnoreCaseAscii(value, "bottom", 6))
+                spec.valign = ImageVAlign::Bottom;
+            else
+                spec.valign = ImageVAlign::Middle;
+        }
+
+        return true;
+    }
+
     /**
      * @brief 遍历文本中所有"可见 token"，自动跳过颜色码与 EML 标签
      *
      * 控制标记格式：
      *   - {~ColorName} / {~#RRGGBB} / {~RRGGBBAA}  颜色标签
-     *   - {~text color=... align=...}              EML 复合标签（属性含空格，需整体跳过）
-     *   - {~>defname:frame:group ...}              ERA 内嵌图片标签（本插件不渲染，按零宽度跳过）
+     *   - {~text color=... align=...}              EML 复合标签
+     *   - {~>defname[:group:frame] ...}            EML 内嵌 DEF 图片标签
+     *     通过 imageWidth 注入实现计算占位宽度，回调收到 TokenType::IMAGE
      *   - { / }                                    高亮切换（{ 进入高亮，} 恢复默认）
      *
-     * 这些控制字符在遍历中被跳过，回调只接收实际可见字符。
+     * 这些控制字符在遍历中被跳过，回调只接收实际可见字符与图片 token。
      *
-     * @param pFont   字体指针
-     * @param szText  输入文本（以 '\0' 结尾）
-     * @param fn      回调：fn(TokenType type, int width, int charBytes) -> bool
-     *                返回 false 可提前终止遍历
-     * @return        遍历结束时的指针位置（调用方可用于恢复 szText 推进）
+     * @param widthOf   单字符测宽实现
+     * @param imageWidth 图片占位宽度实现：imageWidth(code, len)（code 以 '>' 起始，失败返回 0）
+     * @param szText    输入文本（以 '\0' 结尾）
+     * @param fn        回调：fn(TokenType type, int width, int charBytes) -> bool
+     *                  返回 false 可提前终止遍历
+     * @return          遍历结束时的指针位置（调用方可用于恢复 szText 推进）
      */
-    template<typename WidthOf, typename Func>
-    const char* forEachVisibleChar(const WidthOf& widthOf, LPCSTR szText, Func&& fn)
+    template<typename WidthOf, typename ImageWidth, typename Func>
+    const char* forEachVisibleChar(const WidthOf& widthOf, const ImageWidth& imageWidth, LPCSTR szText, Func&& fn)
     {
         while (*szText)
         {
@@ -181,11 +351,24 @@ namespace H3FontExtension
             {
                 if (code == '{' && *(szText + 1) == '~')
                 {
+                    const char* const tagStart = szText;
                     szText += 2; // 跳过 "{~"
                     // 标签一律以 '}' 结尾；换行作为兜底终止，避免损坏的标签吞噬后续文本。
                     // 注意：EML 属性（{~text color=Red}）含空格，不能以空格作为终止条件
                     while (*szText && *szText != '}' && *szText != '\n')
                         ++szText;
+
+                    const std::size_t codeLen = static_cast<std::size_t>(szText - tagStart - 2);
+                    if (codeLen > 0 && tagStart[2] == '>')
+                    {
+                        // 内嵌图片：宽度按占位计算，交回调处理（不可分割 token）
+                        const int imgWidth = imageWidth(tagStart + 2, codeLen);
+                        const int charBytes = static_cast<int>((*szText == '}') ? (szText - tagStart + 1)
+                                                                                 : (szText - tagStart));
+                        if (!fn(TokenType::IMAGE, imgWidth, charBytes))
+                            return szText;
+                    }
+
                     if (*szText == '}') // 跳过 '}'
                         ++szText;
                     continue;
@@ -280,7 +463,14 @@ namespace H3FontExtension
                     ++p;
                 if (p < end && *p == '}')
                     ++p;
-                if (colorEnabled)
+
+                // 内嵌图片标签 {~>...}：不影响颜色状态
+                const bool isImage = (p - start > 2) && start[2] == '>';
+                if (isImage)
+                {
+                    // 保持当前颜色状态
+                }
+                else if (colorEnabled)
                 {
                     activeTag.assign(start, p - start);
                     highlightActive = false;
@@ -314,23 +504,29 @@ namespace H3FontExtension
      * @brief 将一行原始文本（含颜色码）预处理为 CleanLine
      *
      * 剥离所有颜色控制字符 {~...} / { / }，生成纯可见字符序列，
-     * 同时将颜色变更信息记录为 ColorStop 列表。
+     * 同时将颜色变更信息记录为 ColorStop 列表、内嵌图片记录为 ImageAnchor 列表。
      *
-     * @param pFont          字体（用于测量每个字符的步进宽度）
+     * @param widthOf       字体（用于测量每个字符的步进宽度）
+     * @param resolveColor   颜色解析实现
+     * @param collectImage   内嵌图片锚点收集实现：collectImage(code, len, anchor) -> bool
+     *                       （code 以 '>' 起始；返回 false 表示解析/加载失败，按零宽跳过）
+     * @param colorEnabled   颜色功能开关
      * @param src            原始拆行结果（含颜色码）
      * @param default_color   默认渲染颜色（当前色深格式）
      * @param highlight_color { } 切换的高亮颜色
      * @param is32bit        当前是否为 32 位色深模式
      * @param dst            [out] 预处理结果
      */
-    template<typename WidthOf, typename ColorResolver>
-    void preprocessLine(const WidthOf& widthOf, const ColorResolver& resolveColor, bool colorEnabled, const TextLineStruct& src, DWORD default_color, DWORD highlight_color, bool is32bit, CleanLine& dst)
+    template<typename WidthOf, typename ColorResolver, typename ImageCollector>
+    void preprocessLine(const WidthOf& widthOf, const ColorResolver& resolveColor, const ImageCollector& collectImage,
+        bool colorEnabled, const TextLineStruct& src, DWORD default_color, DWORD highlight_color, bool is32bit, CleanLine& dst)
     {
         dst.line_width = src.line_width;
         dst.text.clear();
         dst.stops.clear();
         dst.stops.reserve(4); // 典型行的颜色切换次数很少，避免小规模多次扩容
         dst.advances.clear();
+        dst.images.clear();
 
         if (src.line_width == 0)
             return;
@@ -348,7 +544,7 @@ namespace H3FontExtension
         {
             const uint8_t code = static_cast<uint8_t>(raw[i]);
 
-            // ============ '{' —— 进入高亮或自定义颜色 ============
+            // ============ '{' —— 进入高亮、自定义颜色或内嵌图片 ============
             if (code == '{')
             {
                 DWORD newColor = highlight_color;
@@ -356,23 +552,31 @@ namespace H3FontExtension
 
                 if (i < len && raw[i] == '~')
                 {
-                    // 仅在颜色功能开启时解析自定义颜色值，否则跳过整个标签
+                    ++i;
+                    const std::size_t codeStart = i;
+                    while (i < len && raw[i] != '}')
+                        ++i;
+
+                    const std::size_t codeLen = i - codeStart;
+
+                    // 内嵌图片标签 {~>...}：记录锚点，不产生字符、不改变颜色状态
+                    if (codeLen > 0 && raw[codeStart] == '>')
+                    {
+                        ImageAnchor anchor;
+                        anchor.bytePos = dst.text.size();
+                        if (collectImage(raw.data() + codeStart, codeLen, anchor))
+                            dst.images.push_back(std::move(anchor));
+
+                        if (i < len && raw[i] == '}')
+                            ++i;
+                        continue;
+                    }
+
+                    // 仅在颜色功能开启时解析自定义颜色值，否则等同高亮 {
                     if (colorEnabled)
                     {
-                        ++i;
-                        const std::size_t codeStart = i;
-                        while (i < len && raw[i] != '}')
-                            ++i;
-
                         // 颜色码解析交由注入实现（生产：命名颜色表 / #RRGGBB；测试：固定表）
-                        newColor = resolveColor(raw.data() + codeStart, i - codeStart, default_color, is32bit);
-                    }
-                    else
-                    {
-                        // 颜色功能关闭：跳到 '}' 之后，颜色保持 highlight_color（黄色）
-                        ++i;
-                        while (i < len && raw[i] != '}')
-                            ++i;
+                        newColor = resolveColor(raw.data() + codeStart, codeLen, default_color, is32bit);
                     }
 
                     // 跳过 '}'
@@ -435,21 +639,22 @@ namespace H3FontExtension
      *
      * 算法流程（按词为单位）：
      *   1. 跳过行首空白和换行符
-     *   2. 用 forEachVisibleChar 确定下一个"词"的边界
+     *   2. 用 forEachVisibleChar 确定下一个"词"的边界（内嵌图片按占位宽度计入词宽）
      *   3. 若当前行放不下该词，输出当前行
-     *   4. 若词本身超宽，逐字符强制拆行
+     *   4. 若词本身超宽，逐字符强制拆行（图片作为不可分割单元整体换行）
      *   5. 将词追加到当前行
      *
      * 颜色状态在追加内容时增量维护，折行推送后 O(1) 继承到下一行。
      *
-     * @param pFont     ASCII 字体指针
-     * @param szText    输入文本（以 '\0' 结尾）
-     * @param iBoxWidth 文本框像素宽度
-     * @param lines     [out] 拆分结果（含颜色码的原始行）
+     * @param widthOf    字体测宽实现
+     * @param imageWidth 图片占位宽度实现（见 forEachVisibleChar）
+     * @param szText     输入文本（以 '\0' 结尾）
+     * @param iBoxWidth  文本框像素宽度
+     * @param lines      [out] 拆分结果（含颜色码/图片标签的原始行）
      */
-    template<typename WidthOf>
-    void splitTextIntoLines(const WidthOf& widthOf, bool colorEnabled, LPCSTR szText, const int iBoxWidth,
-        std::vector<TextLineStruct>& lines)
+    template<typename WidthOf, typename ImageWidth>
+    void splitTextIntoLines(const WidthOf& widthOf, const ImageWidth& imageWidth, bool colorEnabled, LPCSTR szText,
+        const int iBoxWidth, std::vector<TextLineStruct>& lines)
     {
         if (!*szText)
             return;
@@ -525,7 +730,7 @@ namespace H3FontExtension
             const char* wordStart = szText;
 
             // realEnd 指向第一个 Space/Newline（触发停止处），或 '\0'
-            const char* realEnd = forEachVisibleChar(widthOf, szText,
+            const char* realEnd = forEachVisibleChar(widthOf, imageWidth, szText,
                 [&](TokenType type, int width, int /*charBytes*/)
                 {
                     if (type == TokenType::SPACE || type == TokenType::NEWLINE)
@@ -559,7 +764,7 @@ namespace H3FontExtension
                     {
                         const uint8_t code = static_cast<uint8_t>(*p);
 
-                        // ---- 颜色标记：保留到行缓冲但不计入宽度 ----
+                        // ---- 颜色标记/图片标签：保留到行缓冲；图片占位计入行宽 ----
                         if (code == '{' || code == '}')
                         {
                             const char* tagStart = p;
@@ -568,6 +773,23 @@ namespace H3FontExtension
                                 p += 2; // 跳过 "{~"
                                 while (p < realEnd && *p != '}')
                                     ++p;
+
+                                const bool isImage = (p - tagStart > 2) && tagStart[2] == '>';
+                                if (isImage)
+                                {
+                                    // 图片为不可分割单元：放不下先换行，再整体输出
+                                    const int imgW = imageWidth(tagStart + 2,
+                                        static_cast<std::size_t>(p - tagStart - 2));
+                                    if (line_width + imgW > iBoxWidth && line_width > 0)
+                                        pushLine(true);
+
+                                    line_width += imgW;
+                                    if (p < realEnd && *p == '}') // 跳过 '}'
+                                        ++p;
+                                    lineBuf.append(tagStart, p - tagStart);
+                                    continue; // 图片不影响颜色状态
+                                }
+
                                 if (p < realEnd && *p == '}') // 跳过 '}'
                                     ++p;
                             }
