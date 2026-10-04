@@ -85,32 +85,38 @@ namespace
     /**
      * @brief 测试内嵌图片实现：DEF 名 "img" 宽度固定 4px
      *
-     * 同时提供两种签名，分别注入 splitTextIntoLines/forEachVisibleChar（宽度）
-     * 与 preprocessLine（锚点收集）。
+     * 同时提供两种签名，分别注入 splitTextIntoLines/forEachVisibleChar（度量）
+     * 与 preprocessLine（锚点收集）；块级图片固定占 2 行以便断言。
      */
     struct test_images
     {
-        int operator()(const char* code, std::size_t len) const
+        bool operator()(const char* code, std::size_t len, ImageTokenMetrics& out) const
         {
-            ImageAnchor anchor;
-            return (*this)(code, len, anchor) ? anchor.width : 0;
+            InlineImageSpec spec;
+            if (!parseInlineImageTag(code, len, spec) || spec.defName != "img")
+                return false;
+
+            out.width = 4;
+            out.isBlock = spec.isBlock;
+            out.numLines = spec.isBlock ? 2 : 1;
+            return true;
         }
 
         bool operator()(const char* code, std::size_t len, ImageAnchor& anchor) const
         {
             InlineImageSpec spec;
-            if (!parseInlineImageTag(code, len, spec))
-                return false;
-            if (spec.defName != "img")
+            if (!parseInlineImageTag(code, len, spec) || spec.defName != "img")
                 return false;
 
             anchor.width = 4;
             anchor.height = 4;
             anchor.group = spec.group;
             anchor.frame = spec.frame;
+            anchor.isBlock = spec.isBlock;
             anchor.mirror = spec.mirror;
-            anchor.sliceStartY = spec.fromY;
-            anchor.sliceHeight = (spec.sliceHeight > 0) ? spec.sliceHeight : 4;
+            anchor.sliceStartY = 0;
+            anchor.sliceHeight = 4;
+            anchor.numLines = spec.isBlock ? 2 : 1;
             return true;
         }
     };
@@ -480,6 +486,33 @@ namespace
         CHECK(clean2.images.empty());
     }
 
+    void testBlockImageLayout()
+    {
+        // 空格分隔：abc / 图片行 / 额外占位行 / def（测试实现固定块级占 2 行）
+        std::vector<TextLineStruct> lines;
+        splitTextIntoLines(test_width{}, test_images{}, true, "abc {~>img block} def", 30, lines);
+        CHECK(lines.size() == 4);
+        if (lines.size() == 4)
+        {
+            CHECK(lines[0].text == "abc" && lines[0].line_width == 3);
+            CHECK(lines[1].text == "{~>img block}" && lines[1].line_width == 4);
+            CHECK(lines[2].line_width == 0);
+            CHECK(lines[3].text == "def" && lines[3].line_width == 3);
+        }
+
+        // 无空格紧邻：前缀片段与图片各自独占行
+        lines.clear();
+        splitTextIntoLines(test_width{}, test_images{}, true, "abc{~>img block}def", 30, lines);
+        CHECK(lines.size() == 4);
+        if (lines.size() == 4)
+        {
+            CHECK(lines[0].text == "abc");
+            CHECK(lines[1].text == "{~>img block}");
+            CHECK(lines[2].line_width == 0);
+            CHECK(lines[3].text == "def");
+        }
+    }
+
 } // namespace
 
 int main()
@@ -502,6 +535,7 @@ int main()
     testParseInlineImageTag();
     testHasEmlFlag();
     testImageLayout();
+    testBlockImageLayout();
 
     std::printf("H3CNTests: %d checks, %d failures\n", gChecks, gFailures);
     return (gFailures == 0) ? 0 : 1;

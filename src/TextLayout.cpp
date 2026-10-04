@@ -189,6 +189,7 @@ namespace H3FontExtension
 
         const int nbsp = nbspWidth(*pFont);
         const int fillChars = (frameW + nbsp - 1) / nbsp;
+        const int fontHeight = std::max(1, static_cast<int>(pFont->fr.height));
 
         anchor.sprite = sprite;
         anchor.group = spec.group;
@@ -196,24 +197,58 @@ namespace H3FontExtension
         anchor.width = fillChars * nbsp;
         anchor.height = frameH;
         anchor.offsetX = (anchor.width - frameW) / 2;
+        anchor.isBlock = spec.isBlock;
         anchor.mirror = spec.mirror;
-        anchor.sliceStartY = spec.fromY;
-        anchor.sliceHeight = (spec.sliceHeight > 0) ? spec.sliceHeight : frameH;
-        anchor.offsetY = spec.offsetY;
         anchor.valign = spec.valign;
-        anchor.numLines = 1; // 块级多行切片在后续批次实现
+
+        if (spec.isBlock)
+        {
+            // 块级图片：height 属性限制切片总高，按字体行高拆分为多行切片
+            const int sliceTotalH = (spec.sliceHeight > 0) ? std::min(spec.sliceHeight, frameH) : frameH;
+            const int numLines = std::max(1, (sliceTotalH + fontHeight - 1) / fontHeight);
+
+            int offY = 0;
+            switch (spec.valign)
+            {
+            case ImageVAlign::Bottom: offY = numLines * fontHeight - sliceTotalH; break;
+            case ImageVAlign::Middle: offY = (numLines * fontHeight - sliceTotalH) / 2; break;
+            case ImageVAlign::Top:
+            default:                  offY = 0; break;
+            }
+            if (spec.hasOffsetY)
+                offY = spec.offsetY;
+
+            anchor.numLines = numLines;
+            anchor.sliceStartY = 0; // 与 ERA 行重建公式一致（from-y 暂不支持）
+            anchor.sliceHeight = sliceTotalH;
+            anchor.offsetY = offY;
+        }
+        else
+        {
+            // 行内图片：完整帧，垂直对齐在绘制时按行高计算
+            anchor.numLines = 1;
+            anchor.sliceStartY = 0;
+            anchor.sliceHeight = frameH;
+            anchor.offsetY = 0;
+        }
         return true;
     }
 
-    /** @brief 生产图片占位宽度实现（供折行/测量使用） */
+    /** @brief 生产图片度量实现（供折行/测量使用） */
     struct def_image_metrics
     {
         const H3FontExt* font;
 
-        int operator()(const char* code, std::size_t len) const
+        bool operator()(const char* code, std::size_t len, ImageTokenMetrics& out) const
         {
             ImageAnchor anchor;
-            return prepareImageAnchor(font, code, len, anchor) ? anchor.width : 0;
+            if (!prepareImageAnchor(font, code, len, anchor))
+                return false;
+
+            out.width = anchor.width;
+            out.isBlock = anchor.isBlock;
+            out.numLines = anchor.numLines;
+            return true;
         }
     };
 
@@ -442,7 +477,7 @@ namespace H3FontExtension
             int wordWidth = 0;
 
             forEachVisibleChar(font_width{pFont}, def_image_metrics{pFont}, szText,
-                [&](TokenType type, int width, int /*bytes*/)
+                [&](TokenType type, int width, int /*bytes*/, const char* /*code*/, std::size_t /*codeLen*/)
                 {
                     if (type == TokenType::NEWLINE || type == TokenType::SPACE || type == TokenType::DOUBLE_BYTE)
                     {
@@ -480,7 +515,7 @@ namespace H3FontExtension
             int line_width = 0;
 
             forEachVisibleChar(font_width{pFont}, def_image_metrics{pFont}, szText,
-                [&](TokenType type, int width, int /*bytes*/)
+                [&](TokenType type, int width, int /*bytes*/, const char* /*code*/, std::size_t /*codeLen*/)
                 {
                     if (type == TokenType::NEWLINE)
                     {
@@ -522,12 +557,36 @@ namespace H3FontExtension
             int line_width = 0;
 
             forEachVisibleChar(font_width{pFont}, def_image_metrics{pFont}, szText,
-                [&](TokenType type, int width, int /*bytes*/)
+                [&](TokenType type, int width, int /*bytes*/, const char* code, std::size_t codeLen)
                 {
                     if (type == TokenType::NEWLINE)
                     {
                         ++lineCount;
                         line_width = 0;
+                    }
+                    else if (type == TokenType::IMAGE)
+                    {
+                        ImageTokenMetrics info;
+                        if (!def_image_metrics{pFont}(code, codeLen, info))
+                            return true; // 解析失败：零宽跳过
+
+                        if (info.isBlock)
+                        {
+                            // 块级图片：前后强制换行 + 额外占位行（与 splitTextIntoLines 一致）
+                            if (line_width > 0)
+                                ++lineCount;
+                            lineCount += info.numLines - 1;
+                            line_width = 0;
+                            return true;
+                        }
+
+                        // 行内图片按占位宽度参与折行计算
+                        if (line_width + info.width > iBoxWidth)
+                        {
+                            ++lineCount;
+                            line_width = 0;
+                        }
+                        line_width += info.width;
                     }
                     else
                     {
@@ -562,7 +621,7 @@ namespace H3FontExtension
         {
             int line_width = 0;
             forEachVisibleChar(font_width{pFont}, def_image_metrics{pFont}, szText,
-                [&](TokenType type, int width, int /*bytes*/)
+                [&](TokenType type, int width, int /*bytes*/, const char* /*code*/, std::size_t /*codeLen*/)
                 {
                     if (type == TokenType::NEWLINE)
                         return false;
@@ -588,7 +647,7 @@ namespace H3FontExtension
             int line_width = 0;
 
             forEachVisibleChar(font_width{pFont}, def_image_metrics{pFont}, szText,
-                [&](TokenType type, int width, int /*bytes*/)
+                [&](TokenType type, int width, int /*bytes*/, const char* /*code*/, std::size_t /*codeLen*/)
                 {
                     if (type == TokenType::NEWLINE)
                     {
@@ -626,7 +685,7 @@ namespace H3FontExtension
         {
             int totalWidth = 0;
             forEachVisibleChar(font_width{pFont}, def_image_metrics{pFont}, szText,
-                [&](TokenType /*type*/, int width, int /*bytes*/)
+                [&](TokenType /*type*/, int width, int /*bytes*/, const char* /*code*/, std::size_t /*codeLen*/)
                 {
                     totalWidth += width;
                     return true;

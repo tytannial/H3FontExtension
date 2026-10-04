@@ -305,7 +305,8 @@ namespace H3FontExtension
         if (findEmlAttr(attrs, attrsLen, "offset-y", 8, value, valueLen))
         {
             const char* v = value;
-            parseIntValue(v, value + valueLen, spec.offsetY);
+            if (parseIntValue(v, value + valueLen, spec.offsetY))
+                spec.hasOffsetY = true;
         }
         if (findEmlAttr(attrs, attrsLen, "valign", 6, value, valueLen))
         {
@@ -333,10 +334,11 @@ namespace H3FontExtension
      * 这些控制字符在遍历中被跳过，回调只接收实际可见字符与图片 token。
      *
      * @param widthOf   单字符测宽实现
-     * @param imageWidth 图片占位宽度实现：imageWidth(code, len)（code 以 '>' 起始，失败返回 0）
+     * @param imageWidth 图片度量实现：imageWidth(code, len, out)（code 以 '>' 起始，失败返回 false）
      * @param szText    输入文本（以 '\0' 结尾）
-     * @param fn        回调：fn(TokenType type, int width, int charBytes) -> bool
-     *                  返回 false 可提前终止遍历
+     * @param fn        回调：fn(TokenType type, int width, int charBytes, const char* code, std::size_t codeLen) -> bool
+     *                  图片 token 的 code/codeLen 为标签内容（'>' 起始），其他 token 为 nullptr/0；
+     *                  返回 false 可提前终止遍历（图片 token 中断时会先消费 '}' 再返回）
      * @return          遍历结束时的指针位置（调用方可用于恢复 szText 推进）
      */
     template<typename WidthOf, typename ImageWidth, typename Func>
@@ -362,11 +364,19 @@ namespace H3FontExtension
                     if (codeLen > 0 && tagStart[2] == '>')
                     {
                         // 内嵌图片：宽度按占位计算，交回调处理（不可分割 token）
-                        const int imgWidth = imageWidth(tagStart + 2, codeLen);
-                        const int charBytes = static_cast<int>((*szText == '}') ? (szText - tagStart + 1)
-                                                                                 : (szText - tagStart));
-                        if (!fn(TokenType::IMAGE, imgWidth, charBytes))
-                            return szText;
+                        ImageTokenMetrics info;
+                        if (imageWidth(tagStart + 2, codeLen, info))
+                        {
+                            const int charBytes = static_cast<int>((*szText == '}') ? (szText - tagStart + 1)
+                                                                                     : (szText - tagStart));
+                            if (!fn(TokenType::IMAGE, info.width, charBytes, tagStart + 2, codeLen))
+                            {
+                                // 回调要求中断（如块级图片独立成词）：先消费 '}' 再返回
+                                if (*szText == '}')
+                                    ++szText;
+                                return szText;
+                            }
+                        }
                     }
 
                     if (*szText == '}') // 跳过 '}'
@@ -380,7 +390,7 @@ namespace H3FontExtension
             // -------- 换行 --------
             if (code == '\n')
             {
-                if (!fn(TokenType::NEWLINE, 0, 1))
+                if (!fn(TokenType::NEWLINE, 0, 1, nullptr, 0))
                     return szText;
                 ++szText;
                 continue;
@@ -390,7 +400,7 @@ namespace H3FontExtension
             if (code == ' ')
             {
                 const int spaceW = widthOf(L' ');
-                if (!fn(TokenType::SPACE, spaceW, 1))
+                if (!fn(TokenType::SPACE, spaceW, 1, nullptr, 0))
                     return szText;
                 ++szText;
                 continue;
@@ -401,7 +411,7 @@ namespace H3FontExtension
             {
                 const wchar_t wch = (wchar_t)code;
                 const int charW = widthOf(wch);
-                if (!fn(TokenType::SINGLE_BYTE, charW, 1))
+                if (!fn(TokenType::SINGLE_BYTE, charW, 1, nullptr, 0))
                     return szText;
                 ++szText;
                 continue;
@@ -413,7 +423,7 @@ namespace H3FontExtension
             {
                 const wchar_t wch = ExtFont::GbkToWchar(code, nc);
                 const int charW = widthOf(wch);
-                if (!fn(TokenType::DOUBLE_BYTE, charW, 2))
+                if (!fn(TokenType::DOUBLE_BYTE, charW, 2, nullptr, 0))
                     return szText;
                 szText += 2;
             }
@@ -642,7 +652,8 @@ namespace H3FontExtension
      *   2. 用 forEachVisibleChar 确定下一个"词"的边界（内嵌图片按占位宽度计入词宽）
      *   3. 若当前行放不下该词，输出当前行
      *   4. 若词本身超宽，逐字符强制拆行（图片作为不可分割单元整体换行）
-     *   5. 将词追加到当前行
+     *   5. 块级图片独占行：前后强制换行，并按切片高度保留额外占位行
+     *   6. 将词追加到当前行
      *
      * 颜色状态在追加内容时增量维护，折行推送后 O(1) 继承到下一行。
      *
@@ -728,16 +739,78 @@ namespace H3FontExtension
             // ---- 阶段 2：取词——使用 forEachVisibleChar 确定词边界 ----
             int wordWidth = 0;
             const char* wordStart = szText;
+            bool blockBreak = false;                 // 词中出现块级图片：图片独占行
+            const char* blockTagStart = nullptr;     // 块级图片标签起点（"{~"）
+            int blockImageWidth = 0;
+            int blockImageLines = 1;
 
             // realEnd 指向第一个 Space/Newline（触发停止处），或 '\0'
             const char* realEnd = forEachVisibleChar(widthOf, imageWidth, szText,
-                [&](TokenType type, int width, int /*charBytes*/)
+                [&](TokenType type, int width, int /*charBytes*/, const char* code, std::size_t codeLen)
                 {
                     if (type == TokenType::SPACE || type == TokenType::NEWLINE)
                         return false;
+
+                    if (type == TokenType::IMAGE)
+                    {
+                        ImageTokenMetrics info;
+                        if (imageWidth(code, codeLen, info) && info.isBlock)
+                        {
+                            // 块级图片：中断取词（图片前的片段作为独立词先处理）
+                            blockBreak = true;
+                            blockTagStart = code - 2; // 指向 "{~"
+                            blockImageWidth = info.width;
+                            blockImageLines = info.numLines;
+                            return false;
+                        }
+                    }
+
                     wordWidth += width;
                     return true;
                 });
+
+            // ---- 块级图片：图片前片段 + 独占行 + 额外占位行 ----
+            if (blockBreak)
+            {
+                // 图片前的词片段（若图片不在词首）
+                const std::size_t prefixLen = static_cast<std::size_t>(blockTagStart - wordStart);
+                if (prefixLen > 0)
+                {
+                    if (line_width + wordWidth + blankWidth > iBoxWidth)
+                    {
+                        if (line_width > 0)
+                            pushLine(true);
+                        blankCount = 0;
+                        blankWidth = 0;
+                    }
+
+                    // 行首空格丢弃；词间空格保留并计入行宽
+                    if (blankCount > 0 && (line_width > 0 || !lineBuf.empty()))
+                    {
+                        lineBuf.append(blankCount, ' ');
+                        line_width += blankWidth;
+                    }
+
+                    lineBuf.append(wordStart, prefixLen);
+                    line_width += wordWidth;
+                    updateColorState(colorEnabled, wordStart, blockTagStart, activeTag, highlightActive);
+                }
+
+                // 图片独占行
+                if (line_width > 0 || !lineBuf.empty())
+                    pushLine(false);
+
+                lineBuf.append(blockTagStart, static_cast<std::size_t>(realEnd - blockTagStart));
+                line_width = blockImageWidth;
+                pushLine(false);
+
+                // 切片高度跨多个行高：为后续切片追加占位行（无锚点，仅推进行号）
+                for (int extra = 1; extra < blockImageLines; ++extra)
+                    pushLine(false);
+
+                szText = realEnd;
+                continue;
+            }
 
             // 没有可见字符（如纯颜色码后跟空格/结尾）：安全推进 szText
             if (wordWidth == 0)
@@ -778,8 +851,9 @@ namespace H3FontExtension
                                 if (isImage)
                                 {
                                     // 图片为不可分割单元：放不下先换行，再整体输出
+                                    ImageTokenMetrics info;
                                     const int imgW = imageWidth(tagStart + 2,
-                                        static_cast<std::size_t>(p - tagStart - 2));
+                                        static_cast<std::size_t>(p - tagStart - 2), info) ? info.width : 0;
                                     if (line_width + imgW > iBoxWidth && line_width > 0)
                                         pushLine(true);
 
@@ -839,12 +913,16 @@ namespace H3FontExtension
             }
 
             // ---- 阶段 4：将词追加到当前行 ----
-            if (blankCount > 0)
+            // 行首空格丢弃；词间空格保留并计入行宽
+            if (blankCount > 0 && (line_width > 0 || !lineBuf.empty()))
+            {
                 lineBuf.append(blankCount, ' ');
+                line_width += blankWidth;
+            }
 
             // 保留颜色标记原始字节（preprocessLine 将在渲染阶段剥离）
             lineBuf.append(wordStart, static_cast<std::size_t>(realEnd - wordStart));
-            line_width += wordWidth + blankWidth;
+            line_width += wordWidth;
             updateColorState(colorEnabled, wordStart, realEnd, activeTag, highlightActive);
             szText = realEnd;
         }

@@ -14,6 +14,13 @@
 namespace H3FontExtension
 {
     /**
+     * @brief 设置游戏目录（用于 Data\Defs PNG 覆盖帧查找；插件 init 时调用一次）
+     *
+     * 插件以 BinkW32 代理形式位于游戏根目录，传入模块目录即可。
+     */
+    void setSpriteBaseDir(const wchar_t* dir);
+
+    /**
      * @brief 加载 DEF 资源（带缓存；失败同样缓存 nullptr，避免反复命中资源系统）
      *
      * @param defName DEF 资源名（如 "adventure.def"）

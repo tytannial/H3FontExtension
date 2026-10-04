@@ -77,7 +77,20 @@ namespace H3FontExtension
         int fromY = 0;                                ///< from-y 属性：块级切片起始 Y
         int sliceHeight = -1;                         ///< height 属性：块级切片高度（-1 = 帧高）
         int offsetY = 0;                              ///< offset-y 属性：垂直偏移
+        bool hasOffsetY = false;                      ///< 是否显式指定 offset-y
         ImageVAlign valign = ImageVAlign::Middle;     ///< valign 属性
+    };
+
+    /**
+     * @brief 图片 token 的布局度量（占位宽度/是否块级/占用行数）
+     *
+     * 由 ImageMetrics 注入实现填充，供折行与测量函数统一使用。
+     */
+    struct ImageTokenMetrics
+    {
+        int width = 0;      ///< 占位宽度（像素）
+        bool isBlock = false; ///< 是否块级图片（独占行、逐行切片）
+        int numLines = 1;   ///< 块级图片占用的行数（行内图片恒为 1）
     };
 
     /**
@@ -91,12 +104,13 @@ namespace H3FontExtension
         CSprite* sprite = nullptr;  ///< DEF 资源（游戏 sprite 对象）
         int group = 0;              ///< 帧组索引
         int frame = 0;              ///< 帧索引
+        bool isBlock = false;       ///< 块级图片（独占行、逐行切片）
         bool mirror = false;        ///< 水平镜像
         int offsetX = 0;            ///< 水平偏移（占位框内居中留白）
-        int offsetY = 0;            ///< 垂直偏移（块级切片）
+        int offsetY = 0;            ///< 垂直偏移（块级切片的 valign/offset-y）
         int sliceStartY = 0;        ///< 绘制切片起始 Y（帧内坐标）
-        int sliceHeight = 0;        ///< 绘制切片高度
-        int numLines = 1;           ///< 块级图片占用的行数
+        int sliceHeight = 0;        ///< 切片总高（块级=height 属性/帧高；行内=帧高）
+        int numLines = 1;           ///< 占用的行数（块级>1 时逐行切片）
         ImageVAlign valign = ImageVAlign::Middle; ///< 行内垂直对齐
     };
 

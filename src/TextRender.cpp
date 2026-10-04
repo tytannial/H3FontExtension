@@ -9,6 +9,7 @@
 #include "DefImage.h"
 #include "Log.h"
 
+#include <algorithm>
 #include <cstring>
 
 namespace H3FontExtension
@@ -293,40 +294,84 @@ namespace H3FontExtension
     }
 
     /**
-     * @brief 绘制一个内嵌 DEF 图片锚点（行内完整帧 + valign 垂直对齐）
+     * @brief 绘制一个内嵌 DEF 图片锚点（行内完整帧 / 块级逐行切片）
      *
-     * 批次 A：非块级图片按行内完整帧绘制；块级多行切片的锚点布局在后续批次实现。
+     * 行内图片：完整帧 + valign 垂直对齐；
+     * 块级图片：按字体行高逐行切片绘制（与 ERA 行重建公式一致），
+     * 超出行数或文本框底部的切片停止绘制。
      * 16/32 位像素格式由游戏绘制函数（0x47B610）的适配层处理，此处不区分色深。
      *
      * @param img        图片锚点（sprite/帧/切片/镜像）
      * @param pcx        目标 PCX
      * @param x          锚点的水平位置（占位框左边缘）
-     * @param lineY      本行顶部 Y
+     * @param lineY      首行顶部 Y
      * @param fontHeight 行高
+     * @param bottomBound 文本框底部 Y（超出不再绘制）
      */
-    static void drawImageAnchor(const ImageAnchor& img, Bitmap16Bit* pcx, int x, int lineY, int fontHeight)
+    static void drawImageAnchor(const ImageAnchor& img, Bitmap16Bit* pcx,
+        int x, int lineY, int fontHeight, int bottomBound)
     {
         if (!img.sprite || img.sliceHeight <= 0)
             return;
 
-        int y;
-        switch (img.valign)
+        if (img.numLines <= 1)
         {
-        case ImageVAlign::Top:
-            y = lineY;
-            break;
-        case ImageVAlign::Bottom:
-            y = lineY + fontHeight - img.sliceHeight;
-            break;
-        case ImageVAlign::Middle:
-        default:
-            y = lineY + (fontHeight - img.sliceHeight) / 2;
-            break;
+            // 行内图片：完整帧 + valign 行内对齐
+            int y;
+            switch (img.valign)
+            {
+            case ImageVAlign::Top:
+                y = lineY;
+                break;
+            case ImageVAlign::Bottom:
+                y = lineY + fontHeight - img.sliceHeight;
+                break;
+            case ImageVAlign::Middle:
+            default:
+                y = lineY + (fontHeight - img.sliceHeight) / 2;
+                break;
+            }
+            y += img.offsetY;
+
+            if (y < bottomBound)
+            {
+                drawSpriteFrame(img.sprite, img.group, img.frame,
+                    0, img.sliceStartY, 0, img.sliceHeight,
+                    pcx, x + img.offsetX, y, img.mirror);
+            }
+            return;
         }
 
-        drawSpriteFrame(img.sprite, img.group, img.frame,
-            0, img.sliceStartY, 0, img.sliceHeight,
-            pcx, x + img.offsetX, y + img.offsetY, img.mirror);
+        // 块级图片：按行高逐行切片
+        for (int n = 0; n < img.numLines; ++n)
+        {
+            int srcY;
+            int srcH;
+            int dstOffY;
+            if (n == 0)
+            {
+                srcY = img.sliceStartY;
+                srcH = std::min(img.sliceHeight, fontHeight - img.offsetY);
+                dstOffY = img.offsetY;
+            }
+            else
+            {
+                srcY = n * fontHeight - img.offsetY;
+                srcH = std::min(img.sliceHeight - srcY, fontHeight);
+                dstOffY = 0;
+            }
+
+            if (srcH <= 0)
+                break;
+
+            const int y = lineY + n * fontHeight + dstOffY;
+            if (y >= bottomBound)
+                break;
+
+            drawSpriteFrame(img.sprite, img.group, img.frame,
+                0, srcY, 0, srcH,
+                pcx, x + img.offsetX, y, img.mirror);
+        }
     }
 
     /**
@@ -416,7 +461,7 @@ namespace H3FontExtension
                 while (imageIdx < imageCount && line.images[imageIdx].bytePos == byte_pos)
                 {
                     const ImageAnchor& img = line.images[imageIdx];
-                    drawImageAnchor(img, pPcx, curX, lineY, fontHeight);
+                    drawImageAnchor(img, pPcx, curX, lineY, fontHeight, bottomBound);
                     curX += img.width;
                     ++imageIdx;
                 }
@@ -465,7 +510,7 @@ namespace H3FontExtension
             while (imageIdx < imageCount)
             {
                 const ImageAnchor& img = line.images[imageIdx];
-                drawImageAnchor(img, pPcx, curX, lineY, fontHeight);
+                drawImageAnchor(img, pPcx, curX, lineY, fontHeight, bottomBound);
                 curX += img.width;
                 ++imageIdx;
             }

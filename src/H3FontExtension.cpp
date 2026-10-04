@@ -1,5 +1,6 @@
 #include "H3FontExtensionInternal.h"
 
+#include "DefImage.h"
 #include "Log.h"
 #include "TextLayoutCore.h"
 
@@ -376,6 +377,8 @@ namespace H3FontExtension
             if (fileName)
             {
                 *(fileName + 1) = L'\0';
+                // 插件（BinkW32 代理）位于游戏根目录：登记游戏目录，供 PNG 覆盖帧查找
+                setSpriteBaseDir(configPath);
                 ::wcscat_s(configPath, L"H3CN.toml");
             }
         }

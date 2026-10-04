@@ -6,10 +6,111 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdio>
+#include <cstring>
+#include <string>
 #include <unordered_map>
+#include <utility>
 
 namespace H3FontExtension
 {
+    // ============================================================
+    // 基础路径与 PNG 覆盖帧尺寸
+    // ============================================================
+
+    static wchar_t gBaseDir[MAX_PATH] = {};
+
+    void setSpriteBaseDir(const wchar_t* dir)
+    {
+        if (!dir)
+            return;
+
+        wcsncpy_s(gBaseDir, dir, _TRUNCATE);
+
+        // 去掉尾部路径分隔符（组合路径时统一添加）
+        std::size_t len = wcslen(gBaseDir);
+        while (len > 0 && (gBaseDir[len - 1] == L'\\' || gBaseDir[len - 1] == L'/'))
+            gBaseDir[--len] = L'\0';
+    }
+
+    /** @brief 读取 PNG 文件头 IHDR 宽高（仅尺寸，不做像素解码） */
+    static bool readPngSize(const wchar_t* path, int& width, int& height)
+    {
+        HANDLE file = ::CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file == INVALID_HANDLE_VALUE)
+            return false;
+
+        uint8_t header[24] = {};
+        DWORD read = 0;
+        const BOOL ok = ::ReadFile(file, header, sizeof(header), &read, nullptr);
+        ::CloseHandle(file);
+
+        static const uint8_t pngSig[8] = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
+        if (!ok || read < sizeof(header) ||
+            std::memcmp(header, pngSig, 8) != 0 ||
+            std::memcmp(header + 12, "IHDR", 4) != 0)
+        {
+            return false;
+        }
+
+        const auto be32 = [](const uint8_t* p) -> uint32_t
+        {
+            return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) |
+                   (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
+        };
+
+        width = static_cast<int>(be32(header + 16));
+        height = static_cast<int>(be32(header + 20));
+        return width > 0 && height > 0;
+    }
+
+    /**
+     * @brief 查询 PNG 覆盖帧尺寸（Data\Defs\<defName>\<group>_<frame>.png）
+     *
+     * 与 ERA 的 PNG 帧覆盖机制对应；采用 PNG 完整尺寸（IHDR）近似其
+     * 透明边缘裁剪后的尺寸（不解析像素）。结果（含"不存在"）带缓存。
+     */
+    static bool getPngFrameMetrics(const CSprite* sprite, int group, int frame, int& width, int& height)
+    {
+        if (!sprite || gBaseDir[0] == L'\0' || group < 0 || frame < 0)
+            return false;
+
+        char key[96];
+        std::snprintf(key, sizeof(key), "%s|%d|%d", sprite->Name.data(), group, frame);
+
+        static std::unordered_map<std::string, std::pair<int, int>> cache;
+        const auto it = cache.find(key);
+        if (it != cache.end())
+        {
+            width = it->second.first;
+            height = it->second.second;
+            return width > 0;
+        }
+
+        wchar_t defWide[64] = {};
+        const int wideLen = ::MultiByteToWideChar(CP_ACP, 0, sprite->Name.data(), -1, defWide, 64);
+        if (wideLen <= 1)
+        {
+            cache.emplace(key, std::make_pair(0, 0));
+            return false;
+        }
+
+        wchar_t path[MAX_PATH] = {};
+        swprintf_s(path, L"%s\\Data\\Defs\\%s\\%d_%d.png",
+            gBaseDir, defWide, group, frame);
+
+        int w = 0;
+        int h = 0;
+        if (!readPngSize(path, w, h))
+            w = h = 0;
+
+        cache.emplace(key, std::make_pair(w, h));
+        width = w;
+        height = h;
+        return w > 0;
+    }
+
     // ============================================================
     // 资源缓存与帧尺寸
     // ============================================================
@@ -32,6 +133,10 @@ namespace H3FontExtension
     {
         if (!sprite || group < 0 || frame < 0)
             return false;
+
+        // PNG 覆盖帧优先（与 ERA GetDefFrameCroppingRect 一致）
+        if (getPngFrameMetrics(sprite, group, frame, width, height))
+            return true;
 
         if (group >= sprite->numSequences)
             return false;
