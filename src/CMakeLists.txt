@@ -89,6 +89,11 @@ if(H3_PATH)
                 "$<TARGET_FILE:H3CN>" "${H3_PATH}/BINKW32.DLL"
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                 "$<TARGET_PDB_FILE:H3CN>" "${H3_PATH}/BINKW32.PDB"
+        # 默认配置仅在目标不存在时复制，避免覆盖用户已调整的字体配置
+        COMMAND "${CMAKE_COMMAND}"
+                "-DSRC=${CMAKE_CURRENT_SOURCE_DIR}/H3CN.toml"
+                "-DDST=${H3_PATH}/H3CN.toml"
+                -P "${CMAKE_SOURCE_DIR}/cmake/CopyIfNotExists.cmake"
         COMMENT "部署 H3CN 到 ${H3_PATH}"
     )
 endif()
