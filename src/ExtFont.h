@@ -30,23 +30,26 @@ namespace H3FontExtension
     {
     public:
         // ---- 字体度量（配置，绘制逻辑直接读取） ----
-        int8_t Height = 0;          ///< 字形渲染高度（像素）
-        int    Width = 0;           ///< 字形渲染宽度（像素，不含边距）
-        bool   Bold = false;        ///< 是否加粗（true = FW_BOLD）
-        bool   AntiAlias = true;    ///< 是否启用抗锯齿（子像素/ClearType）
-        int    MarginLeft = 0;      ///< 左侧边距（像素）
-        int    MarginRight = 0;     ///< 右侧边距（像素）
-        int    MarginBottom = 0;    ///< 底部边距（像素），扩大学形缓冲区高度以容纳字体下降部分
-        int    LineSpacing = 0;     ///< 行间距（像素），增加行与行之间的额外空白
-        int    GlyphWidth = 0;      ///< DIB 缓冲区宽度 = MarginLeft + Width + MarginRight
-        bool   DrawShadow = true;   ///< 是否绘制阴影
-        bool   OriginalAscii = true;///< ASCII 字符（0x20-0x7E）是否使用原版 .fnt 位图字体
+        int8_t height = 0;           ///< 字形渲染高度（像素）
+        int    width = 0;            ///< 字形渲染宽度（像素，不含边距）
+        bool   bold = false;         ///< 是否加粗（true = FW_BOLD）
+        bool   anti_alias = true;    ///< 是否启用抗锯齿（子像素/ClearType）
+        int    margin_left = 0;      ///< 左侧边距（像素）
+        int    margin_right = 0;     ///< 右侧边距（像素）
+        int    margin_bottom = 0;    ///< 底部边距（像素），扩大学形缓冲区高度以容纳字体下降部分
+        int    line_spacing = 0;     ///< 行间距（像素），增加行与行之间的额外空白
+        int    glyph_width = 0;      ///< DIB 缓冲区宽度 = margin_left + width + margin_right
+        bool   draw_shadow = true;   ///< 是否绘制阴影
+        bool   original_ascii = true;///< ASCII 字符（0x20-0x7E）是否使用原版 .fnt 位图字体
 
         /** @brief 返回有效字形高度（含底部边距） */
-        int EffectiveHeight() const { return Height + MarginBottom; }
+        int EffectiveHeight() const { return height + margin_bottom; }
+
+        /** @brief 扩展字库是否已成功加载（字形后端可用） */
+        bool IsLoaded() const { return rasterizer != nullptr; }
 
         /** @brief 该字符是否走原版 ASCII 位图路径（开关开启且为可打印 ASCII） */
-        bool UsesOriginalAscii(wchar_t ch) const { return OriginalAscii && ch >= 0x20 && ch <= 0x7E; }
+        bool UsesOriginalAscii(wchar_t ch) const { return original_ascii && ch >= 0x20 && ch <= 0x7E; }
 
         ExtFont() = default;
 
@@ -99,9 +102,20 @@ namespace H3FontExtension
 
         /**
          * @brief 获取字形的抗锯齿 alpha 掩膜（按需渲染 + 缓存）
-         * @return GlyphWidth×EffectiveHeight 字节 alpha 数据指针，失败返回 nullptr
+         * @return glyph_width×EffectiveHeight 字节 alpha 数据指针，失败返回 nullptr
          */
         const uint8_t* GetGlyphAlpha(wchar_t ch);
+
+        /**
+         * @brief 获取字形的阴影掩膜（按需生成 + 缓存）
+         *
+         * 阴影掩膜与 alpha 掩膜同尺寸：像素值 = alpha，但字形自身右下方
+         * 有覆盖（重叠）的位置置 0，避免阴影混入字形内部。预合成后渲染
+         * 热路径不再逐像素读取相邻行数据。
+         *
+         * @return glyph_width×EffectiveHeight 字节掩膜指针，失败返回 nullptr
+         */
+        const uint8_t* GetGlyphShadow(wchar_t ch);
 
         /**
          * @brief 获取单个字符的步进宽度（advance width，含左右边距）
@@ -119,22 +133,23 @@ namespace H3FontExtension
         class GlyphPool
         {
         public:
-            void Init(std::size_t glyphBytes) { glyphBytes_ = glyphBytes; }
+            void Init(std::size_t glyphBytes) { glyph_bytes = glyphBytes; }
 
             /** @brief 分配一个字形大小的块；耗尽内存返回 nullptr */
             uint8_t* Allocate();
 
         private:
             static constexpr std::size_t ChunkBytes = 1u << 20; // 1 MB
-            std::vector<std::unique_ptr<uint8_t[]>> chunks_;
-            std::size_t used_ = 0;
-            std::size_t glyphBytes_ = 0;
+            std::vector<std::unique_ptr<uint8_t[]>> chunks;
+            std::size_t used = 0;
+            std::size_t glyph_bytes = 0;
         };
 
-        std::unique_ptr<IGlyphRasterizer> rasterizer_; ///< 字形取模后端（DirectWrite/GDI）
-        GlyphPool                         pool_;       ///< 字形位图分配器
-        std::unique_ptr<uint8_t*[]>       glyphCache_; ///< 64K 字形指针表（nullptr = 未缓存）
-        std::unique_ptr<int16_t[]>        widthCache_; ///< 64K 字符宽度表（0 = 未测量）
+        std::unique_ptr<IGlyphRasterizer> rasterizer; ///< 字形取模后端（DirectWrite/GDI）
+        GlyphPool                         pool;       ///< 字形位图分配器
+        std::unique_ptr<uint8_t*[]>       glyph_cache;  ///< 64K 字形指针表（nullptr = 未缓存）
+        std::unique_ptr<uint8_t*[]>       shadow_cache; ///< 64K 阴影掩膜指针表（nullptr = 未生成）
+        std::unique_ptr<int16_t[]>        width_cache;  ///< 64K 字符宽度表（0 = 未测量）
     };
 
 } // namespace H3FontExtension

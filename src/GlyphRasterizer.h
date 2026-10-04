@@ -10,15 +10,15 @@ namespace H3FontExtension
      */
     struct GlyphRasterizerConfig
     {
-        const char* fontName = nullptr; ///< 系统字体名（如 "SimSun"）
-        int  heightPx = 0;              ///< 字形像素高度（正数）
-        bool bold = false;              ///< 是否加粗
-        bool antiAlias = true;          ///< 是否启用抗锯齿（子像素/ClearType）
-        int  marginLeft = 0;            ///< 左边距（渲染起点 X，像素）
-        int  marginRight = 0;           ///< 右边距（像素）
-        int  marginBottom = 0;          ///< 底部扩展（像素，容纳字形下降部分）
-        int  bufferWidth = 0;           ///< 字形缓冲宽度（含左右边距）
-        int  bufferHeight = 0;          ///< 字形缓冲高度（含底部扩展）
+        const char* font_name = nullptr; ///< 系统字体名（如 "SimSun"）
+        int  height_px = 0;              ///< 字形像素高度（正数）
+        bool bold = false;               ///< 是否加粗
+        bool anti_alias = true;          ///< 是否启用抗锯齿（子像素/ClearType）
+        int  margin_left = 0;            ///< 左边距（渲染起点 X，像素）
+        int  margin_right = 0;           ///< 右边距（像素）
+        int  margin_bottom = 0;          ///< 底部扩展（像素，容纳字形下降部分）
+        int  buffer_width = 0;           ///< 字形缓冲宽度（含左右边距）
+        int  buffer_height = 0;          ///< 字形缓冲高度（含底部扩展）
     };
 
     /**
@@ -58,14 +58,14 @@ namespace H3FontExtension
      * Windows 7 及以上优先使用 DirectWrite（dwrite.dll 动态加载），
      * 不可用时回退到 GDI（Windows XP 路径）。
      */
-    std::unique_ptr<IGlyphRasterizer> CreateGlyphRasterizer();
+    std::unique_ptr<IGlyphRasterizer> createGlyphRasterizer();
 
-    // ---- 内部工厂（供 CreateGlyphRasterizer 选择实现） ----
+    // ---- 内部工厂（供 createGlyphRasterizer 选择实现） ----
 
     /** @brief 创建 GDI 后端（始终可用） */
-    std::unique_ptr<IGlyphRasterizer> CreateGdiGlyphRasterizer();
+    std::unique_ptr<IGlyphRasterizer> createGdiGlyphRasterizer();
 
     /** @brief 创建 DirectWrite 后端（dwrite.dll 不可用时返回 nullptr） */
-    std::unique_ptr<IGlyphRasterizer> CreateDWriteGlyphRasterizer();
+    std::unique_ptr<IGlyphRasterizer> createDWriteGlyphRasterizer();
 
 } // namespace H3FontExtension

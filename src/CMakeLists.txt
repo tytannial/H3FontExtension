@@ -12,6 +12,11 @@ add_library(H3CN SHARED
     GlyphRasterizerGdi.cpp
     H3FontExtension.cpp
     H3FontExtension.h
+    H3FontExtensionInternal.h
+    Log.cpp
+    Log.h
+    TextLayout.cpp
+    TextRender.cpp
     hook/binkw32hack.h
     resource.h
     H3CN.rc

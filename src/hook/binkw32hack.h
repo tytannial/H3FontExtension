@@ -5,93 +5,93 @@
 #pragma warning(push)
 #pragma warning(disable: 4100)
 
-static HINSTANCE hOriginalBinkW32 = NULL;
-static FARPROC hFuncEntry[72] = { 0 };
+static HINSTANCE gOriginalBinkW32 = NULL;
+static FARPROC gFuncEntry[72] = { 0 };
 
-// 注意：下方每个 stub 中的 `jmp hFuncEntry[i * 4]` 是正确的写法——
-// MSVC 内联汇编把 `hFuncEntry[n]` 的 n 当作字节偏移（不按元素类型缩放），
+// 注意：下方每个 stub 中的 `jmp gFuncEntry[i * 4]` 是正确的写法——
+// MSVC 内联汇编把 `gFuncEntry[n]` 的 n 当作字节偏移（不按元素类型缩放），
 // i * 4 字节偏移恰好等于 FARPROC 数组的第 i 项。
-// 请勿改成 hFuncEntry[i]，那会错误地跳到第 i/4 项。
+// 请勿改成 gFuncEntry[i]，那会错误地跳到第 i/4 项。
 
-static void LoadBinkw32FuncEntry()
+static void loadBinkw32FuncEntry()
 {
-	hOriginalBinkW32 = LoadLibrary(L"binkw32_o.dll");
-	if (!hOriginalBinkW32)
+	gOriginalBinkW32 = LoadLibrary(L"binkw32_o.dll");
+	if (!gOriginalBinkW32)
 	{
 		return;
 	}
-	hFuncEntry[0] = GetProcAddress(hOriginalBinkW32, "_BinkBufferBlit@12");
-	hFuncEntry[1] = GetProcAddress(hOriginalBinkW32, "_BinkBufferCheckWinPos@12");
-	hFuncEntry[2] = GetProcAddress(hOriginalBinkW32, "_BinkBufferClear@8");
-	hFuncEntry[3] = GetProcAddress(hOriginalBinkW32, "_BinkBufferClose@4");
-	hFuncEntry[4] = GetProcAddress(hOriginalBinkW32, "_BinkBufferGetDescription@4");
-	hFuncEntry[5] = GetProcAddress(hOriginalBinkW32, "_BinkBufferGetError@0");
-	hFuncEntry[6] = GetProcAddress(hOriginalBinkW32, "_BinkBufferLock@4");
-	hFuncEntry[7] = GetProcAddress(hOriginalBinkW32, "_BinkBufferOpen@16");
-	hFuncEntry[8] = GetProcAddress(hOriginalBinkW32, "_BinkBufferSetDirectDraw@8");
-	hFuncEntry[9] = GetProcAddress(hOriginalBinkW32, "_BinkBufferSetHWND@8");
-	hFuncEntry[10] = GetProcAddress(hOriginalBinkW32, "_BinkBufferSetOffset@12");
-	hFuncEntry[11] = GetProcAddress(hOriginalBinkW32, "_BinkBufferSetResolution@12");
-	hFuncEntry[12] = GetProcAddress(hOriginalBinkW32, "_BinkBufferSetScale@12");
-	hFuncEntry[13] = GetProcAddress(hOriginalBinkW32, "_BinkBufferUnlock@4");
-	hFuncEntry[14] = GetProcAddress(hOriginalBinkW32, "_BinkCheckCursor@20");
-	hFuncEntry[15] = GetProcAddress(hOriginalBinkW32, "_BinkClose@4");
-	hFuncEntry[16] = GetProcAddress(hOriginalBinkW32, "_BinkCloseTrack@4");
-	hFuncEntry[17] = GetProcAddress(hOriginalBinkW32, "_BinkControlBackgroundIO@8");
-	hFuncEntry[18] = GetProcAddress(hOriginalBinkW32, "_BinkControlPlatformFeatures@8");
-	hFuncEntry[19] = GetProcAddress(hOriginalBinkW32, "_BinkCopyToBuffer@28");
-	hFuncEntry[20] = GetProcAddress(hOriginalBinkW32, "_BinkCopyToBufferRect@44");
-	hFuncEntry[21] = GetProcAddress(hOriginalBinkW32, "_BinkDDSurfaceType@4");
-	hFuncEntry[22] = GetProcAddress(hOriginalBinkW32, "_BinkDX8SurfaceType@4");
-	hFuncEntry[23] = GetProcAddress(hOriginalBinkW32, "_BinkDX9SurfaceType@4");
-	hFuncEntry[24] = GetProcAddress(hOriginalBinkW32, "_BinkDoFrame@4");
-	hFuncEntry[25] = GetProcAddress(hOriginalBinkW32, "_BinkDoFrameAsync@12");
-	hFuncEntry[26] = GetProcAddress(hOriginalBinkW32, "_BinkDoFrameAsyncWait@8");
-	hFuncEntry[27] = GetProcAddress(hOriginalBinkW32, "_BinkDoFramePlane@8");
-	hFuncEntry[28] = GetProcAddress(hOriginalBinkW32, "_BinkGetError@0");
-	hFuncEntry[29] = GetProcAddress(hOriginalBinkW32, "_BinkGetFrameBuffersInfo@8");
-	hFuncEntry[30] = GetProcAddress(hOriginalBinkW32, "_BinkGetKeyFrame@12");
-	hFuncEntry[31] = GetProcAddress(hOriginalBinkW32, "_BinkGetPalette@4");
-	hFuncEntry[32] = GetProcAddress(hOriginalBinkW32, "_BinkGetRealtime@12");
-	hFuncEntry[33] = GetProcAddress(hOriginalBinkW32, "_BinkGetRects@8");
-	hFuncEntry[34] = GetProcAddress(hOriginalBinkW32, "_BinkGetSummary@8");
-	hFuncEntry[35] = GetProcAddress(hOriginalBinkW32, "_BinkGetTrackData@8");
-	hFuncEntry[36] = GetProcAddress(hOriginalBinkW32, "_BinkGetTrackID@8");
-	hFuncEntry[37] = GetProcAddress(hOriginalBinkW32, "_BinkGetTrackMaxSize@8");
-	hFuncEntry[38] = GetProcAddress(hOriginalBinkW32, "_BinkGetTrackType@8");
-	hFuncEntry[39] = GetProcAddress(hOriginalBinkW32, "_BinkGoto@12");
-	hFuncEntry[40] = GetProcAddress(hOriginalBinkW32, "_BinkIsSoftwareCursor@8");
-	hFuncEntry[41] = GetProcAddress(hOriginalBinkW32, "_BinkLogoAddress@0");
-	hFuncEntry[42] = GetProcAddress(hOriginalBinkW32, "_BinkNextFrame@4");
-	hFuncEntry[43] = GetProcAddress(hOriginalBinkW32, "_BinkOpen@8");
-	hFuncEntry[44] = GetProcAddress(hOriginalBinkW32, "_BinkOpenDirectSound@4");
-	hFuncEntry[45] = GetProcAddress(hOriginalBinkW32, "_BinkOpenMiles@4");
-	hFuncEntry[46] = GetProcAddress(hOriginalBinkW32, "_BinkOpenTrack@8");
-	hFuncEntry[47] = GetProcAddress(hOriginalBinkW32, "_BinkOpenWaveOut@4");
-	hFuncEntry[48] = GetProcAddress(hOriginalBinkW32, "_BinkPause@8");
-	hFuncEntry[49] = GetProcAddress(hOriginalBinkW32, "_BinkRegisterFrameBuffers@8");
-	hFuncEntry[50] = GetProcAddress(hOriginalBinkW32, "_BinkRequestStopAsyncThread@4");
-	hFuncEntry[51] = GetProcAddress(hOriginalBinkW32, "_BinkRestoreCursor@4");
-	hFuncEntry[52] = GetProcAddress(hOriginalBinkW32, "_BinkService@4");
-	hFuncEntry[53] = GetProcAddress(hOriginalBinkW32, "_BinkSetError@4");
-	hFuncEntry[54] = GetProcAddress(hOriginalBinkW32, "_BinkSetFrameRate@8");
-	hFuncEntry[55] = GetProcAddress(hOriginalBinkW32, "_BinkSetIO@4");
-	hFuncEntry[56] = GetProcAddress(hOriginalBinkW32, "_BinkSetIOSize@4");
-	hFuncEntry[57] = GetProcAddress(hOriginalBinkW32, "_BinkSetMemory@8");
-	hFuncEntry[58] = GetProcAddress(hOriginalBinkW32, "_BinkSetMixBinVolumes@20");
-	hFuncEntry[59] = GetProcAddress(hOriginalBinkW32, "_BinkSetMixBins@16");
-	hFuncEntry[60] = GetProcAddress(hOriginalBinkW32, "_BinkSetPan@12");
-	hFuncEntry[61] = GetProcAddress(hOriginalBinkW32, "_BinkSetSimulate@4");
-	hFuncEntry[62] = GetProcAddress(hOriginalBinkW32, "_BinkSetSoundOnOff@8");
-	hFuncEntry[63] = GetProcAddress(hOriginalBinkW32, "_BinkSetSoundSystem@8");
-	hFuncEntry[64] = GetProcAddress(hOriginalBinkW32, "_BinkSetSoundTrack@8");
-	hFuncEntry[65] = GetProcAddress(hOriginalBinkW32, "_BinkSetVideoOnOff@8");
-	hFuncEntry[66] = GetProcAddress(hOriginalBinkW32, "_BinkSetVolume@12");
-	hFuncEntry[67] = GetProcAddress(hOriginalBinkW32, "_BinkShouldSkip@4");
-	hFuncEntry[68] = GetProcAddress(hOriginalBinkW32, "_BinkStartAsyncThread@8");
-	hFuncEntry[69] = GetProcAddress(hOriginalBinkW32, "_BinkWait@4");
-	hFuncEntry[70] = GetProcAddress(hOriginalBinkW32, "_BinkWaitStopAsyncThread@4");
-	hFuncEntry[71] = GetProcAddress(hOriginalBinkW32, "_RADTimerRead@0");
+	gFuncEntry[0] = GetProcAddress(gOriginalBinkW32, "_BinkBufferBlit@12");
+	gFuncEntry[1] = GetProcAddress(gOriginalBinkW32, "_BinkBufferCheckWinPos@12");
+	gFuncEntry[2] = GetProcAddress(gOriginalBinkW32, "_BinkBufferClear@8");
+	gFuncEntry[3] = GetProcAddress(gOriginalBinkW32, "_BinkBufferClose@4");
+	gFuncEntry[4] = GetProcAddress(gOriginalBinkW32, "_BinkBufferGetDescription@4");
+	gFuncEntry[5] = GetProcAddress(gOriginalBinkW32, "_BinkBufferGetError@0");
+	gFuncEntry[6] = GetProcAddress(gOriginalBinkW32, "_BinkBufferLock@4");
+	gFuncEntry[7] = GetProcAddress(gOriginalBinkW32, "_BinkBufferOpen@16");
+	gFuncEntry[8] = GetProcAddress(gOriginalBinkW32, "_BinkBufferSetDirectDraw@8");
+	gFuncEntry[9] = GetProcAddress(gOriginalBinkW32, "_BinkBufferSetHWND@8");
+	gFuncEntry[10] = GetProcAddress(gOriginalBinkW32, "_BinkBufferSetOffset@12");
+	gFuncEntry[11] = GetProcAddress(gOriginalBinkW32, "_BinkBufferSetResolution@12");
+	gFuncEntry[12] = GetProcAddress(gOriginalBinkW32, "_BinkBufferSetScale@12");
+	gFuncEntry[13] = GetProcAddress(gOriginalBinkW32, "_BinkBufferUnlock@4");
+	gFuncEntry[14] = GetProcAddress(gOriginalBinkW32, "_BinkCheckCursor@20");
+	gFuncEntry[15] = GetProcAddress(gOriginalBinkW32, "_BinkClose@4");
+	gFuncEntry[16] = GetProcAddress(gOriginalBinkW32, "_BinkCloseTrack@4");
+	gFuncEntry[17] = GetProcAddress(gOriginalBinkW32, "_BinkControlBackgroundIO@8");
+	gFuncEntry[18] = GetProcAddress(gOriginalBinkW32, "_BinkControlPlatformFeatures@8");
+	gFuncEntry[19] = GetProcAddress(gOriginalBinkW32, "_BinkCopyToBuffer@28");
+	gFuncEntry[20] = GetProcAddress(gOriginalBinkW32, "_BinkCopyToBufferRect@44");
+	gFuncEntry[21] = GetProcAddress(gOriginalBinkW32, "_BinkDDSurfaceType@4");
+	gFuncEntry[22] = GetProcAddress(gOriginalBinkW32, "_BinkDX8SurfaceType@4");
+	gFuncEntry[23] = GetProcAddress(gOriginalBinkW32, "_BinkDX9SurfaceType@4");
+	gFuncEntry[24] = GetProcAddress(gOriginalBinkW32, "_BinkDoFrame@4");
+	gFuncEntry[25] = GetProcAddress(gOriginalBinkW32, "_BinkDoFrameAsync@12");
+	gFuncEntry[26] = GetProcAddress(gOriginalBinkW32, "_BinkDoFrameAsyncWait@8");
+	gFuncEntry[27] = GetProcAddress(gOriginalBinkW32, "_BinkDoFramePlane@8");
+	gFuncEntry[28] = GetProcAddress(gOriginalBinkW32, "_BinkGetError@0");
+	gFuncEntry[29] = GetProcAddress(gOriginalBinkW32, "_BinkGetFrameBuffersInfo@8");
+	gFuncEntry[30] = GetProcAddress(gOriginalBinkW32, "_BinkGetKeyFrame@12");
+	gFuncEntry[31] = GetProcAddress(gOriginalBinkW32, "_BinkGetPalette@4");
+	gFuncEntry[32] = GetProcAddress(gOriginalBinkW32, "_BinkGetRealtime@12");
+	gFuncEntry[33] = GetProcAddress(gOriginalBinkW32, "_BinkGetRects@8");
+	gFuncEntry[34] = GetProcAddress(gOriginalBinkW32, "_BinkGetSummary@8");
+	gFuncEntry[35] = GetProcAddress(gOriginalBinkW32, "_BinkGetTrackData@8");
+	gFuncEntry[36] = GetProcAddress(gOriginalBinkW32, "_BinkGetTrackID@8");
+	gFuncEntry[37] = GetProcAddress(gOriginalBinkW32, "_BinkGetTrackMaxSize@8");
+	gFuncEntry[38] = GetProcAddress(gOriginalBinkW32, "_BinkGetTrackType@8");
+	gFuncEntry[39] = GetProcAddress(gOriginalBinkW32, "_BinkGoto@12");
+	gFuncEntry[40] = GetProcAddress(gOriginalBinkW32, "_BinkIsSoftwareCursor@8");
+	gFuncEntry[41] = GetProcAddress(gOriginalBinkW32, "_BinkLogoAddress@0");
+	gFuncEntry[42] = GetProcAddress(gOriginalBinkW32, "_BinkNextFrame@4");
+	gFuncEntry[43] = GetProcAddress(gOriginalBinkW32, "_BinkOpen@8");
+	gFuncEntry[44] = GetProcAddress(gOriginalBinkW32, "_BinkOpenDirectSound@4");
+	gFuncEntry[45] = GetProcAddress(gOriginalBinkW32, "_BinkOpenMiles@4");
+	gFuncEntry[46] = GetProcAddress(gOriginalBinkW32, "_BinkOpenTrack@8");
+	gFuncEntry[47] = GetProcAddress(gOriginalBinkW32, "_BinkOpenWaveOut@4");
+	gFuncEntry[48] = GetProcAddress(gOriginalBinkW32, "_BinkPause@8");
+	gFuncEntry[49] = GetProcAddress(gOriginalBinkW32, "_BinkRegisterFrameBuffers@8");
+	gFuncEntry[50] = GetProcAddress(gOriginalBinkW32, "_BinkRequestStopAsyncThread@4");
+	gFuncEntry[51] = GetProcAddress(gOriginalBinkW32, "_BinkRestoreCursor@4");
+	gFuncEntry[52] = GetProcAddress(gOriginalBinkW32, "_BinkService@4");
+	gFuncEntry[53] = GetProcAddress(gOriginalBinkW32, "_BinkSetError@4");
+	gFuncEntry[54] = GetProcAddress(gOriginalBinkW32, "_BinkSetFrameRate@8");
+	gFuncEntry[55] = GetProcAddress(gOriginalBinkW32, "_BinkSetIO@4");
+	gFuncEntry[56] = GetProcAddress(gOriginalBinkW32, "_BinkSetIOSize@4");
+	gFuncEntry[57] = GetProcAddress(gOriginalBinkW32, "_BinkSetMemory@8");
+	gFuncEntry[58] = GetProcAddress(gOriginalBinkW32, "_BinkSetMixBinVolumes@20");
+	gFuncEntry[59] = GetProcAddress(gOriginalBinkW32, "_BinkSetMixBins@16");
+	gFuncEntry[60] = GetProcAddress(gOriginalBinkW32, "_BinkSetPan@12");
+	gFuncEntry[61] = GetProcAddress(gOriginalBinkW32, "_BinkSetSimulate@4");
+	gFuncEntry[62] = GetProcAddress(gOriginalBinkW32, "_BinkSetSoundOnOff@8");
+	gFuncEntry[63] = GetProcAddress(gOriginalBinkW32, "_BinkSetSoundSystem@8");
+	gFuncEntry[64] = GetProcAddress(gOriginalBinkW32, "_BinkSetSoundTrack@8");
+	gFuncEntry[65] = GetProcAddress(gOriginalBinkW32, "_BinkSetVideoOnOff@8");
+	gFuncEntry[66] = GetProcAddress(gOriginalBinkW32, "_BinkSetVolume@12");
+	gFuncEntry[67] = GetProcAddress(gOriginalBinkW32, "_BinkShouldSkip@4");
+	gFuncEntry[68] = GetProcAddress(gOriginalBinkW32, "_BinkStartAsyncThread@8");
+	gFuncEntry[69] = GetProcAddress(gOriginalBinkW32, "_BinkWait@4");
+	gFuncEntry[70] = GetProcAddress(gOriginalBinkW32, "_BinkWaitStopAsyncThread@4");
+	gFuncEntry[71] = GetProcAddress(gOriginalBinkW32, "_RADTimerRead@0");
 }
 
 // _BinkBufferBlit@12
@@ -99,7 +99,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkBufferBlit
 {
 	__asm
 	{
-		jmp hFuncEntry[0 * 4];
+		jmp gFuncEntry[0 * 4];
 	}
 }
 
@@ -108,7 +108,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkBufferChec
 {
 	__asm
 	{
-		jmp hFuncEntry[1 * 4];
+		jmp gFuncEntry[1 * 4];
 	}
 }
 
@@ -117,7 +117,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkBufferClea
 {
 	__asm
 	{
-		jmp hFuncEntry[2 * 4];
+		jmp gFuncEntry[2 * 4];
 	}
 }
 
@@ -126,7 +126,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkBufferClos
 {
 	__asm
 	{
-		jmp hFuncEntry[3 * 4];
+		jmp gFuncEntry[3 * 4];
 	}
 }
 
@@ -135,7 +135,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkBufferGetD
 {
 	__asm
 	{
-		jmp hFuncEntry[4 * 4];
+		jmp gFuncEntry[4 * 4];
 	}
 }
 
@@ -144,7 +144,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkBufferGetE
 {
 	__asm
 	{
-		jmp hFuncEntry[5 * 4];
+		jmp gFuncEntry[5 * 4];
 	}
 }
 
@@ -153,7 +153,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkBufferLock
 {
 	__asm
 	{
-		jmp hFuncEntry[6 * 4];
+		jmp gFuncEntry[6 * 4];
 	}
 }
 
@@ -162,7 +162,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkBufferOpen
 {
 	__asm
 	{
-		jmp hFuncEntry[7 * 4];
+		jmp gFuncEntry[7 * 4];
 	}
 }
 
@@ -171,7 +171,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkBufferSetD
 {
 	__asm
 	{
-		jmp hFuncEntry[8 * 4];
+		jmp gFuncEntry[8 * 4];
 	}
 }
 
@@ -180,7 +180,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkBufferSetH
 {
 	__asm
 	{
-		jmp hFuncEntry[9 * 4];
+		jmp gFuncEntry[9 * 4];
 	}
 }
 
@@ -189,7 +189,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkBufferSetO
 {
 	__asm
 	{
-		jmp hFuncEntry[10 * 4];
+		jmp gFuncEntry[10 * 4];
 	}
 }
 
@@ -198,7 +198,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkBufferSetR
 {
 	__asm
 	{
-		jmp hFuncEntry[11 * 4];
+		jmp gFuncEntry[11 * 4];
 	}
 }
 
@@ -207,7 +207,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkBufferSetS
 {
 	__asm
 	{
-		jmp hFuncEntry[12 * 4];
+		jmp gFuncEntry[12 * 4];
 	}
 }
 
@@ -216,7 +216,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkBufferUnlo
 {
 	__asm
 	{
-		jmp hFuncEntry[13 * 4];
+		jmp gFuncEntry[13 * 4];
 	}
 }
 
@@ -225,7 +225,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkCheckCurso
 {
 	__asm
 	{
-		jmp hFuncEntry[14 * 4];
+		jmp gFuncEntry[14 * 4];
 	}
 }
 
@@ -234,7 +234,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkClose(int 
 {
 	__asm
 	{
-		jmp hFuncEntry[15 * 4];
+		jmp gFuncEntry[15 * 4];
 	}
 }
 
@@ -243,7 +243,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkCloseTrack
 {
 	__asm
 	{
-		jmp hFuncEntry[16 * 4];
+		jmp gFuncEntry[16 * 4];
 	}
 }
 
@@ -252,7 +252,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkControlBac
 {
 	__asm
 	{
-		jmp hFuncEntry[17 * 4];
+		jmp gFuncEntry[17 * 4];
 	}
 }
 
@@ -261,7 +261,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkControlPla
 {
 	__asm
 	{
-		jmp hFuncEntry[18 * 4];
+		jmp gFuncEntry[18 * 4];
 	}
 }
 
@@ -270,7 +270,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkCopyToBuff
 {
 	__asm
 	{
-		jmp hFuncEntry[19 * 4];
+		jmp gFuncEntry[19 * 4];
 	}
 }
 
@@ -279,7 +279,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkCopyToBuff
 {
 	__asm
 	{
-		jmp hFuncEntry[20 * 4];
+		jmp gFuncEntry[20 * 4];
 	}
 }
 
@@ -288,7 +288,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkDDSurfaceT
 {
 	__asm
 	{
-		jmp hFuncEntry[21 * 4];
+		jmp gFuncEntry[21 * 4];
 	}
 }
 
@@ -297,7 +297,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkDX8Surface
 {
 	__asm
 	{
-		jmp hFuncEntry[22 * 4];
+		jmp gFuncEntry[22 * 4];
 	}
 }
 
@@ -306,7 +306,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkDX9Surface
 {
 	__asm
 	{
-		jmp hFuncEntry[23 * 4];
+		jmp gFuncEntry[23 * 4];
 	}
 }
 
@@ -315,7 +315,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkDoFrame(in
 {
 	__asm
 	{
-		jmp hFuncEntry[24 * 4];
+		jmp gFuncEntry[24 * 4];
 	}
 }
 
@@ -324,7 +324,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkDoFrameAsy
 {
 	__asm
 	{
-		jmp hFuncEntry[25 * 4];
+		jmp gFuncEntry[25 * 4];
 	}
 }
 
@@ -333,7 +333,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkDoFrameAsy
 {
 	__asm
 	{
-		jmp hFuncEntry[26 * 4];
+		jmp gFuncEntry[26 * 4];
 	}
 }
 
@@ -342,7 +342,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkDoFramePla
 {
 	__asm
 	{
-		jmp hFuncEntry[27 * 4];
+		jmp gFuncEntry[27 * 4];
 	}
 }
 
@@ -351,7 +351,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkGetError()
 {
 	__asm
 	{
-		jmp hFuncEntry[28 * 4];
+		jmp gFuncEntry[28 * 4];
 	}
 }
 
@@ -360,7 +360,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkGetFrameBu
 {
 	__asm
 	{
-		jmp hFuncEntry[29 * 4];
+		jmp gFuncEntry[29 * 4];
 	}
 }
 
@@ -369,7 +369,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkGetKeyFram
 {
 	__asm
 	{
-		jmp hFuncEntry[30 * 4];
+		jmp gFuncEntry[30 * 4];
 	}
 }
 
@@ -378,7 +378,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkGetPalette
 {
 	__asm
 	{
-		jmp hFuncEntry[31 * 4];
+		jmp gFuncEntry[31 * 4];
 	}
 }
 
@@ -387,7 +387,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkGetRealtim
 {
 	__asm
 	{
-		jmp hFuncEntry[32 * 4];
+		jmp gFuncEntry[32 * 4];
 	}
 }
 
@@ -396,7 +396,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkGetRects(i
 {
 	__asm
 	{
-		jmp hFuncEntry[33 * 4];
+		jmp gFuncEntry[33 * 4];
 	}
 }
 
@@ -405,7 +405,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkGetSummary
 {
 	__asm
 	{
-		jmp hFuncEntry[34 * 4];
+		jmp gFuncEntry[34 * 4];
 	}
 }
 
@@ -414,7 +414,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkGetTrackDa
 {
 	__asm
 	{
-		jmp hFuncEntry[35 * 4];
+		jmp gFuncEntry[35 * 4];
 	}
 }
 
@@ -423,7 +423,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkGetTrackID
 {
 	__asm
 	{
-		jmp hFuncEntry[36 * 4];
+		jmp gFuncEntry[36 * 4];
 	}
 }
 
@@ -432,7 +432,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkGetTrackMa
 {
 	__asm
 	{
-		jmp hFuncEntry[37 * 4];
+		jmp gFuncEntry[37 * 4];
 	}
 }
 
@@ -441,7 +441,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkGetTrackTy
 {
 	__asm
 	{
-		jmp hFuncEntry[38 * 4];
+		jmp gFuncEntry[38 * 4];
 	}
 }
 
@@ -450,7 +450,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkGoto(int a
 {
 	__asm
 	{
-		jmp hFuncEntry[39 * 4];
+		jmp gFuncEntry[39 * 4];
 	}
 }
 
@@ -459,7 +459,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkIsSoftware
 {
 	__asm
 	{
-		jmp hFuncEntry[40 * 4];
+		jmp gFuncEntry[40 * 4];
 	}
 }
 
@@ -468,7 +468,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkLogoAddres
 {
 	__asm
 	{
-		jmp hFuncEntry[41 * 4];
+		jmp gFuncEntry[41 * 4];
 	}
 }
 
@@ -477,7 +477,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkNextFrame(
 {
 	__asm
 	{
-		jmp hFuncEntry[42 * 4];
+		jmp gFuncEntry[42 * 4];
 	}
 }
 
@@ -486,7 +486,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkOpen(int a
 {
 	__asm
 	{
-		jmp hFuncEntry[43 * 4];
+		jmp gFuncEntry[43 * 4];
 	}
 }
 
@@ -495,7 +495,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkOpenDirect
 {
 	__asm
 	{
-		jmp hFuncEntry[44 * 4];
+		jmp gFuncEntry[44 * 4];
 	}
 }
 
@@ -504,7 +504,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkOpenMiles(
 {
 	__asm
 	{
-		jmp hFuncEntry[45 * 4];
+		jmp gFuncEntry[45 * 4];
 	}
 }
 
@@ -513,7 +513,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkOpenTrack(
 {
 	__asm
 	{
-		jmp hFuncEntry[46 * 4];
+		jmp gFuncEntry[46 * 4];
 	}
 }
 
@@ -522,7 +522,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkOpenWaveOu
 {
 	__asm
 	{
-		jmp hFuncEntry[47 * 4];
+		jmp gFuncEntry[47 * 4];
 	}
 }
 
@@ -531,7 +531,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkPause(int 
 {
 	__asm
 	{
-		jmp hFuncEntry[48 * 4];
+		jmp gFuncEntry[48 * 4];
 	}
 }
 
@@ -540,7 +540,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkRegisterFr
 {
 	__asm
 	{
-		jmp hFuncEntry[49 * 4];
+		jmp gFuncEntry[49 * 4];
 	}
 }
 
@@ -549,7 +549,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkRequestSto
 {
 	__asm
 	{
-		jmp hFuncEntry[50 * 4];
+		jmp gFuncEntry[50 * 4];
 	}
 }
 
@@ -558,7 +558,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkRestoreCur
 {
 	__asm
 	{
-		jmp hFuncEntry[51 * 4];
+		jmp gFuncEntry[51 * 4];
 	}
 }
 
@@ -567,7 +567,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkService(in
 {
 	__asm
 	{
-		jmp hFuncEntry[52 * 4];
+		jmp gFuncEntry[52 * 4];
 	}
 }
 
@@ -576,7 +576,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkSetError(i
 {
 	__asm
 	{
-		jmp hFuncEntry[53 * 4];
+		jmp gFuncEntry[53 * 4];
 	}
 }
 
@@ -585,7 +585,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkSetFrameRa
 {
 	__asm
 	{
-		jmp hFuncEntry[54 * 4];
+		jmp gFuncEntry[54 * 4];
 	}
 }
 
@@ -594,7 +594,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkSetIO(int 
 {
 	__asm
 	{
-		jmp hFuncEntry[55 * 4];
+		jmp gFuncEntry[55 * 4];
 	}
 }
 
@@ -603,7 +603,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkSetIOSize(
 {
 	__asm
 	{
-		jmp hFuncEntry[56 * 4];
+		jmp gFuncEntry[56 * 4];
 	}
 }
 
@@ -612,7 +612,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkSetMemory(
 {
 	__asm
 	{
-		jmp hFuncEntry[57 * 4];
+		jmp gFuncEntry[57 * 4];
 	}
 }
 
@@ -621,7 +621,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkSetMixBinV
 {
 	__asm
 	{
-		jmp hFuncEntry[58 * 4];
+		jmp gFuncEntry[58 * 4];
 	}
 }
 
@@ -630,7 +630,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkSetMixBins
 {
 	__asm
 	{
-		jmp hFuncEntry[59 * 4];
+		jmp gFuncEntry[59 * 4];
 	}
 }
 
@@ -639,7 +639,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkSetPan(int
 {
 	__asm
 	{
-		jmp hFuncEntry[60 * 4];
+		jmp gFuncEntry[60 * 4];
 	}
 }
 
@@ -648,7 +648,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkSetSimulat
 {
 	__asm
 	{
-		jmp hFuncEntry[61 * 4];
+		jmp gFuncEntry[61 * 4];
 	}
 }
 
@@ -657,7 +657,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkSetSoundOn
 {
 	__asm
 	{
-		jmp hFuncEntry[62 * 4];
+		jmp gFuncEntry[62 * 4];
 	}
 }
 
@@ -666,7 +666,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkSetSoundSy
 {
 	__asm
 	{
-		jmp hFuncEntry[63 * 4];
+		jmp gFuncEntry[63 * 4];
 	}
 }
 
@@ -675,7 +675,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkSetSoundTr
 {
 	__asm
 	{
-		jmp hFuncEntry[64 * 4];
+		jmp gFuncEntry[64 * 4];
 	}
 }
 
@@ -684,7 +684,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkSetVideoOn
 {
 	__asm
 	{
-		jmp hFuncEntry[65 * 4];
+		jmp gFuncEntry[65 * 4];
 	}
 }
 
@@ -693,7 +693,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkSetVolume(
 {
 	__asm
 	{
-		jmp hFuncEntry[66 * 4];
+		jmp gFuncEntry[66 * 4];
 	}
 }
 
@@ -702,7 +702,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkShouldSkip
 {
 	__asm
 	{
-		jmp hFuncEntry[67 * 4];
+		jmp gFuncEntry[67 * 4];
 	}
 }
 
@@ -711,7 +711,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkStartAsync
 {
 	__asm
 	{
-		jmp hFuncEntry[68 * 4];
+		jmp gFuncEntry[68 * 4];
 	}
 }
 
@@ -720,7 +720,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkWait(int a
 {
 	__asm
 	{
-		jmp hFuncEntry[69 * 4];
+		jmp gFuncEntry[69 * 4];
 	}
 }
 
@@ -729,7 +729,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall BinkWaitStopAs
 {
 	__asm
 	{
-		jmp hFuncEntry[70 * 4];
+		jmp gFuncEntry[70 * 4];
 	}
 }
 
@@ -738,7 +738,7 @@ extern "C" __declspec(dllexport) __declspec(naked) void __stdcall RADTimerRead()
 {
 	__asm
 	{
-		jmp hFuncEntry[71 * 4];
+		jmp gFuncEntry[71 * 4];
 	}
 }
 

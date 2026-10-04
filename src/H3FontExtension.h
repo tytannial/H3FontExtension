@@ -45,10 +45,10 @@ namespace H3FontExtension
      * @brief 可见字符类型，用于文本扫描遍历
      */
     enum class TokenType : uint8_t {
-        Newline,    ///< 换行符 '\n'
-        Space,      ///< 空格 ' '
-        SingleByte, ///< ASCII 单字节可见字符
-        DoubleByte  ///< 双字节字符（GBK 汉字等）
+        NEWLINE,    ///< 换行符 '\n'
+        SPACE,      ///< 空格 ' '
+        SINGLE_BYTE, ///< ASCII 单字节可见字符
+        DOUBLE_BYTE  ///< 双字节字符（GBK 汉字等）
     };
 
     // ============================================================
@@ -60,8 +60,8 @@ namespace H3FontExtension
      */
     struct TextLineStruct
     {
-        std::string Text;   ///< 行文本内容（含颜色码 {~...} / { / }）
-        int lineWidth;      ///< 该行可见字符的总像素宽度
+        std::string text;    ///< 行文本内容（含颜色码 {~...} / { / }）
+        int line_width;      ///< 该行可见字符的总像素宽度
     };
 
     /**
@@ -71,8 +71,8 @@ namespace H3FontExtension
      */
     struct H3FontExt : font
     {
-        int      oriHeight; ///< 原始字体高度（扩展前的 fr.height 值）
-        ExtFont* ExtData;   ///< 关联的扩展字库指针
+        int      ori_height; ///< 原始字体高度（扩展前的 fr.height 值）
+        ExtFont* ext_data;   ///< 关联的扩展字库指针
     };
 
     /**
@@ -80,7 +80,7 @@ namespace H3FontExtension
      */
     struct ColorStop
     {
-        std::size_t bytePos; ///< 在 cleanText 中的字节偏移
+        std::size_t byte_pos; ///< 在 cleanText 中的字节偏移
         DWORD  color;   ///< 切换后的渲染颜色（已转换为当前色深格式）
     };
 
@@ -93,8 +93,8 @@ namespace H3FontExtension
     struct CleanLine
     {
         std::string text;               ///< 纯可见字符（无颜色码、无控制字符）
-        int         lineWidth;          ///< 该行可见字符的总像素宽度
-        std::vector<ColorStop> stops;   ///< 按 bytePos 升序排列的颜色变更点
+        int         line_width;          ///< 该行可见字符的总像素宽度
+        std::vector<ColorStop> stops;   ///< 按 byte_pos 升序排列的颜色变更点
         std::vector<uint16_t> advances; ///< 每个可见字符的步进宽度（布局阶段预计算，绘制期零测量）
     };
 
@@ -108,7 +108,7 @@ namespace H3FontExtension
      * @param nextCode 下一字节
      * @return true 表示 code/nextCode 构成一个合法的双字节字符
      */
-    inline static bool IsDBCSLeadByte(uint8_t code, uint8_t nextCode)
+    inline static bool isDBCSLeadByte(uint8_t code, uint8_t nextCode)
     {
         // GBK 位码有效范围 0x40..0xFE，其中 0x7F 为非法码位
         return code >= DBCS_SECTION && nextCode >= DBCS_POSITION && nextCode <= 0xFE && nextCode != 0x7F;
@@ -119,7 +119,7 @@ namespace H3FontExtension
      * @param code 当前字节
      * @return true 表示该字节为单字节字符
      */
-    inline static bool IsSingleByte(uint8_t code)
+    inline static bool isSingleByte(uint8_t code)
     {
         return code < DBCS_SECTION || code == 0xFF;
     }
@@ -129,7 +129,7 @@ namespace H3FontExtension
      * @param color 32 位颜色值（仅低 24 位有效）
      * @return RGB565 格式的 16 位颜色值
      */
-    constexpr inline static WORD RGB888toRGB565(DWORD color)
+    constexpr inline static WORD rgb888ToRgb565(DWORD color)
     {
         const DWORD r = (color >> 16) & 0xFF;
         const DWORD g = (color >> 8) & 0xFF;
@@ -149,6 +149,6 @@ namespace H3FontExtension
      * @param hModule 插件自身模块句柄（由 DllMain 传入，用于定位配置文件）
      * @return 初始化是否成功
      */
-    bool Init(HMODULE hModule);
+    bool init(HMODULE hModule);
 
 } // namespace H3FontExtension

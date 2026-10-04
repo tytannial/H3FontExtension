@@ -8,14 +8,14 @@
 
 namespace H3FontExtension
 {
-    std::unique_ptr<IGlyphRasterizer> CreateGlyphRasterizer()
+    std::unique_ptr<IGlyphRasterizer> createGlyphRasterizer()
     {
         // Windows 7 及以上：优先 DirectWrite（dwrite.dll 动态加载，无导入表依赖）
-        if (auto dwrite = CreateDWriteGlyphRasterizer())
+        if (auto dwrite = createDWriteGlyphRasterizer())
             return dwrite;
 
         // Windows XP：GDI 路径
-        return CreateGdiGlyphRasterizer();
+        return createGdiGlyphRasterizer();
     }
 
 } // namespace H3FontExtension

@@ -20,7 +20,7 @@ namespace H3FontExtension
     using DWriteCreateFactoryFn = HRESULT(WINAPI*)(DWRITE_FACTORY_TYPE, REFIID, IUnknown**);
 
     /** @brief 获取 DWriteCreateFactory（进程内仅解析一次；dwrite.dll 不可用返回 nullptr） */
-    static DWriteCreateFactoryFn GetDWriteCreateFactory()
+    static DWriteCreateFactoryFn getDWriteCreateFactory()
     {
         static DWriteCreateFactoryFn fn = []() -> DWriteCreateFactoryFn
         {
@@ -39,16 +39,16 @@ namespace H3FontExtension
     public:
         ~DWriteGlyphRasterizer() override
         {
-            if (fontFace_)
-                fontFace_->Release();
-            if (font_)
-                font_->Release();
-            if (family_)
-                family_->Release();
-            if (collection_)
-                collection_->Release();
-            if (factory_)
-                factory_->Release();
+            if (font_face)
+                font_face->Release();
+            if (font)
+                font->Release();
+            if (family)
+                family->Release();
+            if (collection)
+                collection->Release();
+            if (factory)
+                factory->Release();
         }
 
         bool Initialize(const GlyphRasterizerConfig& config) override;
@@ -62,68 +62,68 @@ namespace H3FontExtension
         /** @brief 查询字形索引与 GDI 兼容度量 */
         bool GetGlyphIndex(wchar_t ch, UINT16& glyphIndex, DWRITE_GLYPH_METRICS& metrics) const;
 
-        /** @brief 渲染字形 alpha 纹理到覆盖度缓冲；子像素/灰度由 antiAlias_ 决定 */
+        /** @brief 渲染字形 alpha 纹理到覆盖度缓冲；子像素/灰度由 anti_alias 决定 */
         bool RenderGlyphTexture(IDWriteGlyphRunAnalysis* analysis, bool clearType, uint8_t* outAlpha);
 
-        IDWriteFactory* factory_ = nullptr;
-        IDWriteFontCollection* collection_ = nullptr;
-        IDWriteFontFamily* family_ = nullptr;
-        IDWriteFont* font_ = nullptr;
-        IDWriteFontFace* fontFace_ = nullptr;
+        IDWriteFactory* factory = nullptr;
+        IDWriteFontCollection* collection = nullptr;
+        IDWriteFontFamily* family = nullptr;
+        IDWriteFont* font = nullptr;
+        IDWriteFontFace* font_face = nullptr;
 
-        float fontSize_ = 0.0f;         ///< em 尺寸（像素，按字形高度校准）
-        float designUnitsPerEm_ = 0.0f; ///< 字体设计单位/em（度量缩放基准）
-        float pixelsPerDip_ = 1.0f;     ///< DPI 缩放（游戏固定 96 DPI）
-        float ascent_ = 0.0f;           ///< 基线相对缓冲顶部的像素距离
-        int marginLeft_ = 0;         ///< 左边距（glyph run 原点 X）
-        int marginRight_ = 0;        ///< 右边距
-        int bufferWidth_ = 0;        ///< 字形缓冲宽度
-        int bufferHeight_ = 0;       ///< 字形缓冲高度
-        bool antiAlias_ = true;      ///< 是否启用抗锯齿
+        float font_size = 0.0f;         ///< em 尺寸（像素，按字形高度校准）
+        float design_units_per_em = 0.0f; ///< 字体设计单位/em（度量缩放基准）
+        float pixels_per_dip = 1.0f;     ///< DPI 缩放（游戏固定 96 DPI）
+        float ascent = 0.0f;           ///< 基线相对缓冲顶部的像素距离
+        int margin_left = 0;         ///< 左边距（glyph run 原点 X）
+        int margin_right = 0;        ///< 右边距
+        int buffer_width = 0;        ///< 字形缓冲宽度
+        int buffer_height = 0;       ///< 字形缓冲高度
+        bool anti_alias = true;      ///< 是否启用抗锯齿
     };
 
     bool DWriteGlyphRasterizer::Initialize(const GlyphRasterizerConfig& config)
     {
-        DWriteCreateFactoryFn createFactory = GetDWriteCreateFactory();
+        DWriteCreateFactoryFn createFactory = getDWriteCreateFactory();
         if (!createFactory)
             return false;
 
         HRESULT hr = createFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
-            reinterpret_cast<IUnknown**>(&factory_));
-        if (FAILED(hr) || !factory_)
+            reinterpret_cast<IUnknown**>(&factory));
+        if (FAILED(hr) || !factory)
             return false;
 
-        hr = factory_->GetSystemFontCollection(&collection_, FALSE);
-        if (FAILED(hr) || !collection_)
+        hr = factory->GetSystemFontCollection(&collection, FALSE);
+        if (FAILED(hr) || !collection)
             return false;
 
-        if (!ResolveFontFace(config.fontName, config.bold))
+        if (!ResolveFontFace(config.font_name, config.bold))
             return false;
 
         // 校准 em 尺寸：使可见字符高度（ascent + descent，设计单位）等于配置的字形像素高度，
         // 与 GDI 路径 CreateFont(-height) 的字符高度语义保持一致
         DWRITE_FONT_METRICS design = {};
-        fontFace_->GetMetrics(&design);
-        designUnitsPerEm_ = static_cast<float>(design.designUnitsPerEm);
+        font_face->GetMetrics(&design);
+        design_units_per_em = static_cast<float>(design.designUnitsPerEm);
         const UINT32 charHeightUnits = static_cast<UINT32>(design.ascent) + design.descent;
-        fontSize_ = (charHeightUnits > 0 && designUnitsPerEm_ > 0.0f)
-            ? static_cast<float>(config.heightPx) * designUnitsPerEm_ / charHeightUnits
-            : static_cast<float>(config.heightPx);
+        font_size = (charHeightUnits > 0 && design_units_per_em > 0.0f)
+            ? static_cast<float>(config.height_px) * design_units_per_em / charHeightUnits
+            : static_cast<float>(config.height_px);
 
         // GDI 兼容度量返回设计单位，换算为像素（缩放因子 = fontSize / designUnitsPerEm）；
         // ascent 为基线相对字符单元格顶部的像素距离
-        const float toPixels = fontSize_ / designUnitsPerEm_;
+        const float toPixels = font_size / design_units_per_em;
         DWRITE_FONT_METRICS gdi = {};
-        hr = fontFace_->GetGdiCompatibleMetrics(fontSize_, pixelsPerDip_, nullptr, &gdi);
+        hr = font_face->GetGdiCompatibleMetrics(font_size, pixels_per_dip, nullptr, &gdi);
         if (FAILED(hr))
             return false;
-        ascent_ = static_cast<float>(gdi.ascent) * toPixels;
+        ascent = static_cast<float>(gdi.ascent) * toPixels;
 
-        marginLeft_ = config.marginLeft;
-        marginRight_ = config.marginRight;
-        bufferWidth_ = config.bufferWidth;
-        bufferHeight_ = config.bufferHeight;
-        antiAlias_ = config.antiAlias;
+        margin_left = config.margin_left;
+        margin_right = config.margin_right;
+        buffer_width = config.buffer_width;
+        buffer_height = config.buffer_height;
+        anti_alias = config.anti_alias;
         return true;
     }
 
@@ -135,27 +135,27 @@ namespace H3FontExtension
 
         BOOL exists = FALSE;
         UINT32 index = 0;
-        HRESULT hr = collection_->FindFamilyName(wideName, &index, &exists);
+        HRESULT hr = collection->FindFamilyName(wideName, &index, &exists);
         if (FAILED(hr) || !exists)
         {
             // 回退宋体
-            hr = collection_->FindFamilyName(L"SimSun", &index, &exists);
+            hr = collection->FindFamilyName(L"SimSun", &index, &exists);
             if (FAILED(hr) || !exists)
                 return false;
         }
 
-        hr = collection_->GetFontFamily(index, &family_);
-        if (FAILED(hr) || !family_)
+        hr = collection->GetFontFamily(index, &family);
+        if (FAILED(hr) || !family)
             return false;
 
         const DWRITE_FONT_WEIGHT weight = bold ? DWRITE_FONT_WEIGHT_BOLD : DWRITE_FONT_WEIGHT_NORMAL;
-        hr = family_->GetFirstMatchingFont(weight, DWRITE_FONT_STRETCH_NORMAL,
-            DWRITE_FONT_STYLE_NORMAL, &font_);
-        if (FAILED(hr) || !font_)
+        hr = family->GetFirstMatchingFont(weight, DWRITE_FONT_STRETCH_NORMAL,
+            DWRITE_FONT_STYLE_NORMAL, &font);
+        if (FAILED(hr) || !font)
             return false;
 
-        hr = font_->CreateFontFace(&fontFace_);
-        return SUCCEEDED(hr) && fontFace_ != nullptr;
+        hr = font->CreateFontFace(&font_face);
+        return SUCCEEDED(hr) && font_face != nullptr;
     }
 
     bool DWriteGlyphRasterizer::GetGlyphIndex(wchar_t ch, UINT16& glyphIndex,
@@ -163,11 +163,11 @@ namespace H3FontExtension
     {
         const UINT32 codePoint = static_cast<UINT32>(static_cast<uint16_t>(ch));
         glyphIndex = 0;
-        HRESULT hr = fontFace_->GetGlyphIndices(&codePoint, 1, &glyphIndex);
+        HRESULT hr = font_face->GetGlyphIndices(&codePoint, 1, &glyphIndex);
         if (FAILED(hr) || glyphIndex == 0)
             return false;
 
-        hr = fontFace_->GetGdiCompatibleGlyphMetrics(fontSize_, pixelsPerDip_, nullptr, FALSE,
+        hr = font_face->GetGdiCompatibleGlyphMetrics(font_size, pixels_per_dip, nullptr, FALSE,
             &glyphIndex, 1, &metrics, FALSE);
         return SUCCEEDED(hr);
     }
@@ -183,7 +183,7 @@ namespace H3FontExtension
         if (FAILED(hr))
             return false;
 
-        ::memset(outAlpha, 0, static_cast<size_t>(bufferWidth_) * bufferHeight_);
+        ::memset(outAlpha, 0, static_cast<size_t>(buffer_width) * buffer_height);
 
         const int textureWidth = bounds.right - bounds.left;
         const int textureHeight = bounds.bottom - bounds.top;
@@ -204,14 +204,14 @@ namespace H3FontExtension
         for (int y = 0; y < textureHeight; ++y)
         {
             const int dstY = bounds.top + y;
-            if (dstY < 0 || dstY >= bufferHeight_)
+            if (dstY < 0 || dstY >= buffer_height)
                 continue;
 
-            uint8_t* dstRow = outAlpha + static_cast<size_t>(dstY) * bufferWidth_;
+            uint8_t* dstRow = outAlpha + static_cast<size_t>(dstY) * buffer_width;
             for (int x = 0; x < textureWidth; ++x)
             {
                 const int dstX = bounds.left + x;
-                if (dstX < 0 || dstX >= bufferWidth_)
+                if (dstX < 0 || dstX >= buffer_width)
                     continue;
 
                 if (clearType)
@@ -232,7 +232,7 @@ namespace H3FontExtension
 
     bool DWriteGlyphRasterizer::RenderGlyph(wchar_t ch, uint8_t* outAlpha)
     {
-        if (!fontFace_ || !factory_ || !outAlpha)
+        if (!font_face || !factory || !outAlpha)
             return false;
 
         UINT16 glyphIndex = 0;
@@ -240,12 +240,12 @@ namespace H3FontExtension
         if (!GetGlyphIndex(ch, glyphIndex, metrics))
             return false;
 
-        const float toPixels = fontSize_ / designUnitsPerEm_;
+        const float toPixels = font_size / design_units_per_em;
         const FLOAT advance = static_cast<FLOAT>(metrics.advanceWidth) * toPixels;
         const DWRITE_GLYPH_OFFSET offset = { 0.0f, 0.0f };
         DWRITE_GLYPH_RUN run = {};
-        run.fontFace = fontFace_;
-        run.fontEmSize = fontSize_;
+        run.fontFace = font_face;
+        run.fontEmSize = font_size;
         run.glyphCount = 1;
         run.glyphIndices = &glyphIndex;
         run.glyphAdvances = &advance;
@@ -253,15 +253,15 @@ namespace H3FontExtension
         run.isSideways = FALSE;
         run.bidiLevel = 0;
 
-        const bool clearType = antiAlias_;
+        const bool clearType = anti_alias;
         const DWRITE_RENDERING_MODE renderMode = clearType
             ? DWRITE_RENDERING_MODE_GDI_NATURAL
             : DWRITE_RENDERING_MODE_ALIASED;
 
         IDWriteGlyphRunAnalysis* analysis = nullptr;
-        HRESULT hr = factory_->CreateGlyphRunAnalysis(&run, pixelsPerDip_, nullptr,
+        HRESULT hr = factory->CreateGlyphRunAnalysis(&run, pixels_per_dip, nullptr,
             renderMode, DWRITE_MEASURING_MODE_NATURAL,
-            static_cast<FLOAT>(marginLeft_), ascent_, &analysis);
+            static_cast<FLOAT>(margin_left), ascent, &analysis);
         if (FAILED(hr) || !analysis)
             return false;
 
@@ -275,16 +275,16 @@ namespace H3FontExtension
         UINT16 glyphIndex = 0;
         DWRITE_GLYPH_METRICS metrics = {};
         if (!GetGlyphIndex(ch, glyphIndex, metrics))
-            return bufferWidth_; // 回退：无字形时使用缓冲宽度
+            return buffer_width; // 回退：无字形时使用缓冲宽度
 
         // GDI 兼容度量返回设计单位，换算为像素后四舍五入
-        const float advance = static_cast<FLOAT>(metrics.advanceWidth) * (fontSize_ / designUnitsPerEm_);
-        return static_cast<int>(advance + 0.5f) + marginLeft_ + marginRight_;
+        const float advance = static_cast<FLOAT>(metrics.advanceWidth) * (font_size / design_units_per_em);
+        return static_cast<int>(advance + 0.5f) + margin_left + margin_right;
     }
 
-    std::unique_ptr<IGlyphRasterizer> CreateDWriteGlyphRasterizer()
+    std::unique_ptr<IGlyphRasterizer> createDWriteGlyphRasterizer()
     {
-        if (!GetDWriteCreateFactory())
+        if (!getDWriteCreateFactory())
             return nullptr;
         return std::make_unique<DWriteGlyphRasterizer>();
     }

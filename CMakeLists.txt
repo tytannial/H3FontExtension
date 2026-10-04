@@ -70,3 +70,12 @@ FetchContent_MakeAvailable(NH3API tomlplusplus)
 # 目标
 # ============================================================
 add_subdirectory(src)
+
+# ============================================================
+# 纯逻辑测试（可选，不影响 DLL 构建）
+# ============================================================
+option(H3CN_BUILD_TESTS "构建纯逻辑测试" ON)
+if(H3CN_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
