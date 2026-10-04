@@ -34,7 +34,7 @@ static bool IsSupportedGame()
     }
 }
 
-BOOL APIENTRY DllMain(HMODULE /*hModule*/, DWORD ul_reason_for_call, LPVOID /*lpReserved*/)
+BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID /*lpReserved*/)
 {
     if (DLL_PROCESS_ATTACH == ul_reason_for_call)
     {
@@ -49,7 +49,7 @@ BOOL APIENTRY DllMain(HMODULE /*hModule*/, DWORD ul_reason_for_call, LPVOID /*lp
         LoadBinkw32FuncEntry();
 
         if (IsSupportedGame())
-            H3FontExtension::Init();
+            H3FontExtension::Init(hModule);
     }
     return TRUE;
 }

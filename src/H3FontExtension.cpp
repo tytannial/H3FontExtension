@@ -6,6 +6,7 @@
 #include <cctype>
 #include <charconv>
 #include <cstring>
+#include <cwchar>
 #include <exception>
 #include <unordered_map>
 #include <utility>
@@ -1472,6 +1473,70 @@ namespace H3FontExtension
         });
     }
 
+    /**
+     * @brief Hook: 计算字符串的总像素宽度（单行累计）
+     *
+     * 原版按单字节查 abc 表，对 GBK 文本宽度计算错误。该函数被
+     * TBuyBuildWindow::set_prerequisite_text（先决条件文本折行位置判断）与
+     * type_map_creation_bar（地图加载进度条文本控件宽度）调用。
+     */
+    static int __stdcall H3Font_GetStringWidth(HiHook* /*h*/, H3FontExt* pFont, char* szText)
+    {
+        if (!szText || !*szText || !pFont->ExtData)
+            return 0;
+
+        static MeasureCacheEntry cache[MeasureCacheSize];
+        return CachedMeasure(cache, pFont, szText, 0, [&]()
+        {
+            int totalWidth = 0;
+            ForEachVisibleChar(pFont, szText,
+                [&](TokenType /*type*/, int width, int /*bytes*/)
+                {
+                    totalWidth += width;
+                    return true;
+                });
+            return totalWidth;
+        });
+    }
+
+    /**
+     * @brief Hook: 单字节字符宽度查询（GBK 感知状态机）
+     *
+     * 原版实现按单字节查 abc 表；唯一调用者 type_dialog_icon::set 会逐字节
+     * 顺序遍历字符串并累加宽度。本实现以"待配对首字节"状态处理双字节字符：
+     * 首字节挂起并返回 0，配对到合法尾字节时返回扩展字形的步进宽度；
+     * ASCII 与原版一致。
+     *
+     * 字符编码判定统一走 IsSingleByte/IsDBCSLeadByte/GbkToWchar，
+     * 后续扩展其他 DBCS 代码页时只需替换这些辅助实现。
+     */
+    static int __stdcall H3Font_GetCharacterWidth(HiHook* /*h*/, H3FontExt* pFont, uint8_t currChar)
+    {
+        // 待配对的 DBCS 首字节（0 = 无）；调用者顺序遍历保证配对顺序
+        static uint8_t pendingLead = 0;
+
+        const uint8_t lead = pendingLead;
+        pendingLead = 0;
+
+        // 尾字节：配对成功，返回整个双字节字符的宽度
+        if (lead != 0 && IsDBCSLeadByte(lead, currChar))
+        {
+            return pFont->ExtData
+                ? pFont->ExtData->GetAdvanceWidth(ExtFont::GbkToWchar(lead, currChar))
+                : 0;
+        }
+
+        // DBCS 首字节：挂起，宽度延迟到尾字节返回
+        if (!IsSingleByte(currChar))
+        {
+            pendingLead = currChar;
+            return 0;
+        }
+
+        const auto& spacing = pFont->fr.abc[currChar];
+        return spacing.abcA + spacing.abcB + spacing.abcC;
+    }
+
     // ============================================================
     // Section 7: 生命周期 Hook
     // ============================================================
@@ -1546,10 +1611,12 @@ namespace H3FontExtension
      *
      * 执行流程：
      *   1. 获取 Patcher 实例
-     *   2. 加载 H3CN.toml 配置文件（字体映射、颜色表、宽度限制）
+     *   2. 从插件 DLL 同目录加载 H3CN.toml 配置（字体映射、颜色表、折行规则、宽度限制）
      *   3. 注册所有 Hook（字体加载、文本渲染、布局计算）
+     *
+     * @param hModule 插件自身模块句柄（DllMain 传入，用于定位配置文件）
      */
-    bool Init()
+    bool Init(HMODULE hModule)
     {
 #ifndef NDEBUG
         MessageBoxW(hwndApp, L"注入成功", L"调试中", 0);
@@ -1571,9 +1638,24 @@ namespace H3FontExtension
         }
 
         // ---------- 加载配置文件 ----------
+        // 配置文件固定读取插件 DLL 同目录，避免游戏快捷方式工作目录不一致导致读取失败；
+        // toml++ 的宽路径重载在 Windows 上以宽字符 API 打开文件，中文路径安全
+        wchar_t configPath[MAX_PATH] = {};
+        const DWORD pathLen = ::GetModuleFileNameW(hModule, configPath, MAX_PATH);
+        if (pathLen > 0 && pathLen < MAX_PATH)
+        {
+            wchar_t* fileName = ::wcsrchr(configPath, L'\\');
+            if (fileName)
+            {
+                *(fileName + 1) = L'\0';
+                ::wcscat_s(configPath, L"H3CN.toml");
+            }
+        }
+        const wchar_t* configFile = (configPath[0] != L'\0') ? configPath : L"H3CN.toml";
+
         try
         {
-            auto config = toml::parse_file("H3CN.toml");
+            auto config = toml::parse_file(configFile);
 
             // 字体映射：[Fonts] 节，每个条目定义游戏字体名与扩展字库的对应关系
             if (const auto fontsNode = config["Fonts"]; fontsNode.is_array())
@@ -1656,6 +1738,8 @@ namespace H3FontExtension
 
         // 文本渲染与布局 Hook
         _PI->WriteHiHook(0x4B51F0, SPLICE_, EXTENDED_, THISCALL_, H3Font_DrawText);           // 文本绘制
+        _PI->WriteHiHook(0x4B5500, SPLICE_, EXTENDED_, THISCALL_, H3Font_GetCharacterWidth);  // 单字符宽度（GBK 状态机）
+        _PI->WriteHiHook(0x4B5530, SPLICE_, EXTENDED_, THISCALL_, H3Font_GetStringWidth);     // 字符串总宽度
         _PI->WriteHiHook(0x4B5580, SPLICE_, EXTENDED_, THISCALL_, H3Font_GetLineCount);       // 计算文本行数
         _PI->WriteHiHook(0x4B5680, SPLICE_, EXTENDED_, THISCALL_, H3Font_LineWidth);          // 首行文本像素宽度
         _PI->WriteHiHook(0x4B56F0, SPLICE_, EXTENDED_, THISCALL_, H3Font_GetLineWidth);       // 最长文本行宽度

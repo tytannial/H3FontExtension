@@ -144,9 +144,11 @@ namespace H3FontExtension
     /**
      * @brief 插件初始化入口
      *
-     * 加载配置文件，注册所有 Hook 函数。
+     * 加载配置文件（位于插件 DLL 同目录，避免依赖进程工作目录），
+     * 注册所有 Hook 函数。
+     * @param hModule 插件自身模块句柄（由 DllMain 传入，用于定位配置文件）
      * @return 初始化是否成功
      */
-    bool Init();
+    bool Init(HMODULE hModule);
 
 } // namespace H3FontExtension
