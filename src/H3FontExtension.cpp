@@ -101,11 +101,13 @@ namespace H3FontExtension
      *   3. 注册所有 Hook（字体加载、文本渲染、布局计算）
      *
      * @param hModule 插件自身模块句柄（DllMain 传入，用于定位配置文件）
+     * @param gameEntryPoint 游戏可执行文件 PE 入口点（版本标识，仅用于日志）
      */
-    bool init(HMODULE hModule)
+    bool init(HMODULE hModule, uint32_t gameEntryPoint)
     {
         // ---------- 初始化日志（插件 DLL 同目录） ----------
         initLog(hModule);
+        logInfo("游戏入口点：0x%08X", gameEntryPoint);
 
 #ifndef NDEBUG
         logInfo("插件注入成功（调试构建）");

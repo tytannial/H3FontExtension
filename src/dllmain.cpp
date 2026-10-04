@@ -49,7 +49,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID /*lpRese
         loadBinkw32FuncEntry();
 
         if (isSupportedGame())
-            H3FontExtension::init(hModule);
+            H3FontExtension::init(hModule, getGameEntryPoint());
     }
     return TRUE;
 }

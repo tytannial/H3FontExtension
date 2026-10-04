@@ -147,8 +147,9 @@ namespace H3FontExtension
      * 加载配置文件（位于插件 DLL 同目录，避免依赖进程工作目录），
      * 注册所有 Hook 函数。
      * @param hModule 插件自身模块句柄（由 DllMain 传入，用于定位配置文件）
+     * @param gameEntryPoint 游戏可执行文件 PE 入口点（版本标识，仅用于日志）
      * @return 初始化是否成功
      */
-    bool init(HMODULE hModule);
+    bool init(HMODULE hModule, uint32_t gameEntryPoint);
 
 } // namespace H3FontExtension

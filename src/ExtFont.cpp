@@ -72,20 +72,21 @@ namespace H3FontExtension
         return gGbkCharTable[wch] != 0;
     }
 
-    uint8_t* ExtFont::GlyphPool::Allocate()
+    uint8_t* ExtFont::GlyphPool::Allocate(std::size_t count)
     {
-        if (glyph_bytes == 0)
+        if (glyph_bytes == 0 || count == 0)
             return nullptr;
 
-        if (chunks.empty() || used + glyph_bytes > ChunkBytes)
+        const std::size_t needed = glyph_bytes * count;
+        if (chunks.empty() || used + needed > ChunkBytes)
         {
-            const std::size_t bytes = (glyph_bytes > ChunkBytes) ? glyph_bytes : ChunkBytes;
+            const std::size_t bytes = (needed > ChunkBytes) ? needed : ChunkBytes;
             chunks.push_back(std::make_unique<uint8_t[]>(bytes));
             used = 0;
         }
 
         uint8_t* result = chunks.back().get() + used;
-        used += glyph_bytes;
+        used += needed;
         return result;
     }
 
@@ -169,8 +170,9 @@ namespace H3FontExtension
         if (slot)
             return slot;
 
-        // 按需渲染（从字形池分配，地址稳定、无单独堆分配）
-        uint8_t* glyph = pool.Allocate();
+        // 按需渲染（从字形池分配，地址稳定、无单独堆分配）；
+        // 需要阴影的字体一次分配两个连续块（alpha + 阴影掩膜预留块）
+        uint8_t* glyph = pool.Allocate(draw_shadow ? 2 : 1);
         if (!glyph || !rasterizer->RenderGlyph(ch, glyph))
             return nullptr;
 
@@ -194,7 +196,7 @@ namespace H3FontExtension
 
     const uint8_t* ExtFont::GetGlyphShadow(wchar_t ch)
     {
-        if (!rasterizer || !shadow_cache)
+        if (!rasterizer || !shadow_cache || !draw_shadow)
             return nullptr;
 
         uint8_t*& slot = shadow_cache[static_cast<uint16_t>(ch)];
@@ -205,9 +207,9 @@ namespace H3FontExtension
         if (!alpha)
             return nullptr;
 
-        uint8_t* shadow = pool.Allocate();
-        if (!shadow)
-            return nullptr;
+        // 阴影掩膜位于 alpha 块相邻的预留块（GetGlyphAlpha 在 draw_shadow 时分配两块）
+        const std::size_t glyphBytes = static_cast<std::size_t>(glyph_width) * EffectiveHeight();
+        uint8_t* shadow = const_cast<uint8_t*>(alpha) + glyphBytes;
 
         // 预合成阴影掩膜：alpha 非零且右下方无覆盖（重叠）的位置保留覆盖度
         const int glyphW = glyph_width;

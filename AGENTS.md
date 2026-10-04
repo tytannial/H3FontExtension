@@ -31,7 +31,7 @@ cmake --preset vs2026-x86-local    && cmake --build --preset release-local
 
 - `dllmain.cpp`：BinkW32 代理入口 + 版本识别；`hook/binkw32hack.h`：导出转发 stub
 - `H3FontExtension.cpp`：全局状态、字体加载/DDraw 生命周期 Hook、`init()` 注册全部 Hook；`H3FontExtensionInternal.h`：跨 TU 共享声明
-- `TextLayout.cpp`：颜色码解析、拆行、布局/测量缓存与全部宽度/行数 Hook；`TextRender.cpp`：16/32 位像素混合、字形绘制、`DrawBoundedString` Hook
+- `TextLayout.cpp`：颜色码解析、拆行、布局/测量缓存与全部宽度/行数 Hook；`TextLayoutCore.h`：与游戏解耦的布局核心模板（注入测宽/颜色实现，供测试复用）；`TextRender.cpp`：16/32 位像素混合、字形绘制、`DrawBoundedString` Hook
 - `ExtFont.*`：GBK 区/位码→wchar 查表、字形/宽度/阴影掩膜缓存、1MB 分片字形池
 - `GlyphRasterizer*.cpp`：光栅化后端，Win7+ DirectWrite，XP 回退 GDI
 - `Log.*`：写入 DLL 同目录 `H3CN.log`（UTF-8），替代 MessageBox 弹窗

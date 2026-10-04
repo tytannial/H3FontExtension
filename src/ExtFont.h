@@ -135,8 +135,11 @@ namespace H3FontExtension
         public:
             void Init(std::size_t glyphBytes) { glyph_bytes = glyphBytes; }
 
-            /** @brief 分配一个字形大小的块；耗尽内存返回 nullptr */
-            uint8_t* Allocate();
+            /**
+             * @brief 分配 count 个连续字形块
+             * @return 首块指针；参数无效或内存耗尽返回 nullptr
+             */
+            uint8_t* Allocate(std::size_t count = 1);
 
         private:
             static constexpr std::size_t ChunkBytes = 1u << 20; // 1 MB

@@ -16,6 +16,7 @@ add_library(H3CN SHARED
     Log.cpp
     Log.h
     TextLayout.cpp
+    TextLayoutCore.h
     TextRender.cpp
     hook/binkw32hack.h
     resource.h
